@@ -21,4 +21,13 @@ class User extends Authenticatable
         'password',
         'remember_token',
     ];
+    public function visits()
+    {
+        return $this->hasMany(Visit::class);
+    }
+
+    public function notes()
+    {
+        return $this->hasManyThrough(VisitNote::class, Visit::class);
+    }
 }
