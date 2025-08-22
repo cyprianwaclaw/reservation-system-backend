@@ -752,9 +752,9 @@ class ScheduleController extends Controller
         $reservationStart = Carbon::parse($request->date . ' ' . $request->start_time);
         $reservationEnd   = $reservationStart->copy()->addMinutes($request->duration);
 
-        // Sprawdź czy termin jest w przeszłości
-        if ($reservationStart->lt(Carbon::now())) {
-            return response()->json(['message' => 'Nie można rezerwować terminów w przeszłości'], 422);
+        // Sprawdź czy termin jest w przeszłości (zarówno start jak i end)
+        if ($reservationEnd->lt(Carbon::now())) {
+            return response()->json(['message' => 'Nie można rezerwować zakończonych terminów'], 422);
         }
 
         // Sprawdź weekend
@@ -762,14 +762,16 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Nie można rezerwować w weekendy'], 422);
         }
 
-        // Sprawdź urlop lekarza
+        // Sprawdź urlop lekarza (uwzględniając godziny)
         $hasVacation = Vacation::where('doctor_id', $request->doctor_id)
-            ->whereDate('start_date', '<=', $reservationStart->toDateString())
-            ->whereDate('end_date', '>=', $reservationStart->toDateString())
+            ->where(function ($q) use ($reservationStart, $reservationEnd) {
+                $q->whereRaw('TIMESTAMP(start_date, COALESCE(start_time, "00:00:00")) < ?', [$reservationEnd])
+                    ->whereRaw('TIMESTAMP(end_date,   COALESCE(end_time, "23:59:59")) > ?', [$reservationStart]);
+            })
             ->exists();
 
         if ($hasVacation) {
-            return response()->json(['message' => 'Lekarz jest na urlopie w tym dniu'], 422);
+            return response()->json(['message' => 'Lekarz jest na urlopie w tym terminie'], 422);
         }
 
         // Sprawdź czy user istnieje lub utwórz nowego
@@ -779,9 +781,7 @@ class ScheduleController extends Controller
                 'name'     => $request->name,
                 'surname'  => $request->surname,
                 'phone'    => $request->phone,
-                // 'password' => bcrypt(Str::random(12)),
-                'password' => "password",
-
+                'password' => "password", // losowe hasło, zahashowane
             ]
         );
 
@@ -790,7 +790,7 @@ class ScheduleController extends Controller
             ->where('date', $reservationStart->toDateString())
             ->where(function ($query) use ($reservationStart, $reservationEnd) {
                 $query->where('start_time', '<', $reservationEnd->format('H:i'))
-                    ->where('end_time',   '>', $reservationStart->format('H:i'));
+                ->where('end_time',   '>', $reservationStart->format('H:i'));
             })
             ->exists();
 
@@ -807,7 +807,7 @@ class ScheduleController extends Controller
             'end_time'   => $reservationEnd->format('H:i'),
         ]);
 
-        return response()->json(['message' => 'Zarezerwowano']);
+        return response()->json(['message' => 'Zarezerwowano'], 201);
     }
 
     // public function reserve(Request $request)
