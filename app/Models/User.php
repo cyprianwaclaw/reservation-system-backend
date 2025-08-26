@@ -15,6 +15,9 @@ class User extends Authenticatable
         'phone',
         'email',
         'password',
+        'wiek',
+        'opis',
+        'rodzaj_pacjenta',
     ];
 
     protected $hidden = [
@@ -29,5 +32,19 @@ class User extends Authenticatable
     public function notes()
     {
         return $this->hasManyThrough(VisitNote::class, Visit::class);
+    }
+    public function getAgeWithSuffixAttribute(): string
+    {
+        $age = $this->wiek;
+
+        if ($age === 1) {
+            return $age . ' rok';
+        }
+
+        if ($age % 10 >= 2 && $age % 10 <= 4 && !($age % 100 >= 12 && $age % 100 <= 14)) {
+            return $age . ' lata';
+        }
+
+        return $age . ' lat';
     }
 }

@@ -12,6 +12,9 @@ use App\Models\Visit;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\Log;
+use App\Http\Requests\NewVisitRequest;
+use App\Http\Requests\StorePatientRequest;
+use App\Http\Requests\UpdatePatientRequest;
 
 class ScheduleController extends Controller
 {
@@ -19,8 +22,8 @@ class ScheduleController extends Controller
     private function generateDailySlots(int $doctorId, Carbon $date)
     {
         // Godziny pracy
-        $workStart = Carbon::parse($date->toDateString() . ' 08:00');
-        $workEnd = Carbon::parse($date->toDateString() . ' 18:45');
+        $workStart = Carbon::parse($date->toDateString() . ' 7:30');
+        $workEnd = Carbon::parse($date->toDateString() . ' 21:00');
 
         // Pobierz przerwy/wakacje
         $vacations = Vacation::where('doctor_id', $doctorId)
@@ -221,7 +224,7 @@ class ScheduleController extends Controller
                 'id' => $visit->user->id,
                 'name' => $visit->user->name,
                 'surname' => $visit->user->surname,
-                'e_mail' => $visit->user->email,
+                'email' => $visit->user->email,
                 'phone' => $visit->user->phone,
             ],
             'date' => $visit->date,
@@ -321,7 +324,7 @@ class ScheduleController extends Controller
 
         $doctorId = $request->input('doctor_id');
         $startDate = $request->input('start_date') ? Carbon::parse($request->input('start_date')) : Carbon::today();
-        $daysAhead = $request->input('days_ahead') ?? 20; // default na 20 dni
+        $daysAhead = $request->input('days_ahead') ?? 20; // domyślnie 20 dni
 
         $result = [];
         $doctor = Doctor::findOrFail($doctorId);
@@ -334,12 +337,9 @@ class ScheduleController extends Controller
                 continue;
             }
 
-            // Pobieramy wolne sloty
-            $freeSlots = $this->generateDailySlots($doctor->id, $date);
-
             // Generujemy wszystkie możliwe sloty dnia (bez uwzględnienia wizyt/przerw)
-            $workStart = Carbon::parse($date->toDateString() . ' 08:00');
-            $workEnd = Carbon::parse($date->toDateString() . ' 18:45');
+            $workStart = Carbon::parse($date->toDateString() . ' 7:30');
+            $workEnd = Carbon::parse($date->toDateString() . ' 21:00');
             $allSlots = [];
             $current = $workStart->copy();
             while ($current->lt($workEnd)) {
@@ -349,19 +349,23 @@ class ScheduleController extends Controller
                 $current->addMinutes(45);
             }
 
+            // Pobieramy wolne sloty dnia
+            $freeSlots = $this->generateDailySlots($doctor->id, $date);
+
+            // Upewniamy się, że format jest taki sam
+            $freeSlots = array_map(fn ($s) => Carbon::parse($s)->format('H:i'), $freeSlots);
+
             // Jeśli wszystkie sloty są wolne, dodajemy dzień do wyniku
-            if (!empty($freeSlots) && count($freeSlots) === count($allSlots)) {
+            if (!empty($allSlots) && count(array_intersect($allSlots, $freeSlots)) === count($allSlots)) {
                 $result[] = [
                     'value' => $date->toDateString(),
                     'label' => $date->format('d.m.Y'),
-                    // Carbon::parse($visit->date)->format('d.m.Y')
                 ];
             }
         }
 
         return response()->json($result);
     }
-
     public function getEndOptions(Request $request)
     {
         $request->validate([
@@ -406,13 +410,13 @@ class ScheduleController extends Controller
             'doctor_id'  => 'required|exists:doctors,id',
             'date'       => 'required|date',
             'all_day'    => 'required|boolean',
-            'start_time' => 'nullable|required_if:all_day,false|date_format:G:i',
-            'end_time'   => 'nullable|required_if:all_day,false|date_format:G:i|after:start_time',
+            'start_time' => 'nullable|required_if:all_day,false|date_format:H:i',
+            'end_time'   => 'nullable|required_if:all_day,false|date_format:H:i|after:start_time',
         ]);
 
-        // Jeśli all_day = true → przypisujemy godziny 07:00 - 21:00
-        $startTime = $validated['all_day'] ? '8:00' : $validated['start_time'];
-        $endTime   = $validated['all_day'] ? ' 18:45' : $validated['end_time'];
+        // Jeśli all_day = true → przypisujemy godziny domyślne
+        $startTime = $validated['all_day'] ? '7:00' : $validated['start_time'];
+        $endTime   = $validated['all_day'] ? '21:00' : $validated['end_time'];
 
         $vacation = Vacation::create([
             'doctor_id'  => $validated['doctor_id'],
@@ -736,33 +740,25 @@ class ScheduleController extends Controller
     }
 
 
-    public function reserve(Request $request)
+    public function reserve(NewVisitRequest $request)
     {
-        $request->validate([
-            'doctor_id'   => 'required|exists:doctors,id',
-            'name'        => 'required|string|max:255',
-            'surname'     => 'required|string|max:255',
-            'phone'       => 'nullable|string|max:20',
-            'email'       => 'required|email|max:255',
-            'date'        => 'required|date',
-            'start_time'  => 'required|date_format:H:i',
-            'duration'    => 'required|integer|min:1|max:480', // np. max 8h
-        ]);
 
-        $reservationStart = Carbon::parse($request->date . ' ' . $request->start_time);
-        $reservationEnd   = $reservationStart->copy()->addMinutes($request->duration);
+        $validated = $request->validated();
 
-        // Sprawdź czy termin jest w przeszłości (zarówno start jak i end)
+        $reservationStart = Carbon::parse($validated['date'] . ' ' . $validated['start_time']);
+        $reservationEnd   = $reservationStart->copy()->addMinutes($validated['duration']);
+
+
         if ($reservationEnd->lt(Carbon::now())) {
             return response()->json(['message' => 'Nie można rezerwować zakończonych terminów'], 422);
         }
 
-        // Sprawdź weekend
+
         if ($reservationStart->isWeekend()) {
             return response()->json(['message' => 'Nie można rezerwować w weekendy'], 422);
         }
 
-        // Sprawdź urlop lekarza (uwzględniając godziny)
+
         $hasVacation = Vacation::where('doctor_id', $request->doctor_id)
             ->where(function ($q) use ($reservationStart, $reservationEnd) {
                 $q->whereRaw('TIMESTAMP(start_date, COALESCE(start_time, "00:00:00")) < ?', [$reservationEnd])
@@ -774,7 +770,7 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Lekarz jest na urlopie w tym terminie'], 422);
         }
 
-        // Sprawdź czy user istnieje lub utwórz nowego
+
         $user = User::firstOrCreate(
             ['email' => $request->email],
             [
@@ -785,12 +781,12 @@ class ScheduleController extends Controller
             ]
         );
 
-        // Sprawdź kolizję slotów (start lub end zachodzi na inne wizyty)
+
         $exists = Visit::where('doctor_id', $request->doctor_id)
             ->where('date', $reservationStart->toDateString())
             ->where(function ($query) use ($reservationStart, $reservationEnd) {
                 $query->where('start_time', '<', $reservationEnd->format('H:i'))
-                ->where('end_time',   '>', $reservationStart->format('H:i'));
+                    ->where('end_time',   '>', $reservationStart->format('H:i'));
             })
             ->exists();
 
@@ -798,7 +794,7 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Slot już zajęty'], 409);
         }
 
-        // Tworzymy wizytę
+
         Visit::create([
             'doctor_id'  => $request->doctor_id,
             'user_id'    => $user->id,
@@ -810,80 +806,6 @@ class ScheduleController extends Controller
         return response()->json(['message' => 'Zarezerwowano'], 201);
     }
 
-    // public function reserve(Request $request)
-    // {
-    //     $request->validate([
-    //         'doctor_id'   => 'required|exists:doctors,id',
-    //         'name'        => 'required|string|max:255',
-    //         'surname'     => 'required|string|max:255',
-    //         'phone'       => 'nullable|string|max:20',
-    //         'email'       => 'required|email|max:255',
-    //         'date'        => 'required|date',
-    //         'start_time'  => 'required|date_format:H:i',
-    //         'duration'    => 'required|integer|min:1|max:480', // np. max 8h
-    //     ]);
-
-    //     $reservationStart = Carbon::parse($request->date . ' ' . $request->start_time);
-    //     $reservationEnd   = $reservationStart->copy()->addMinutes($request->duration);
-
-    //     // Sprawdź czy termin jest w przeszłości
-    //     if ($reservationStart->lt(Carbon::now())) {
-    //         return response()->json(['message' => 'Nie można rezerwować terminów w przeszłości'], 422);
-    //     }
-
-    //     // Sprawdź weekend
-    //     if ($reservationStart->isWeekend()) {
-    //         return response()->json(['message' => 'Nie można rezerwować w weekendy'], 422);
-    //     }
-
-    //     // Sprawdź urlop lekarza
-    //     $hasVacation = Vacation::where('doctor_id', $request->doctor_id)
-    //         ->whereDate('start_date', '<=', $reservationStart->toDateString())
-    //         ->whereDate('end_date', '>=', $reservationStart->toDateString())
-    //         ->exists();
-
-    //     if ($hasVacation) {
-    //         return response()->json(['message' => 'Lekarz jest na urlopie w tym dniu'], 422);
-    //     }
-
-    //     // Sprawdź czy user istnieje lub utwórz nowego
-    //     $user = User::firstOrCreate(
-    //         ['email' => $request->email],
-    //         [
-    //             'name'     => $request->name,
-    //             'surname'  => $request->surname,
-    //             'phone'    => $request->phone,
-    //             'password' => bcrypt(str()->random(12)),
-    //         ]
-    //     );
-
-    //     // Sprawdź kolizję slotów (start lub end zachodzi na inne wizyty)
-    //     $exists = Visit::where('doctor_id', $request->doctor_id)
-    //         ->where('date', $request->date)
-    //         ->where(function ($query) use ($reservationStart, $reservationEnd) {
-    //             $query->whereBetween('start_time', [$reservationStart->format('H:i'), $reservationEnd->format('H:i')])
-    //                 ->orWhereBetween('end_time', [$reservationStart->format('H:i'), $reservationEnd->format('H:i')])
-    //                 ->orWhere(function ($q) use ($reservationStart, $reservationEnd) {
-    //                     $q->where('start_time', '<', $reservationStart->format('H:i'))
-    //                     ->where('end_time', '>', $reservationEnd->format('H:i'));
-    //                 });
-    //         })
-    //         ->exists();
-
-    //     if ($exists) {
-    //         return response()->json(['message' => 'Slot już zajęty'], 409);
-    //     }
-
-    //     Visit::create([
-    //         'doctor_id'  => $request->doctor_id,
-    //         'user_id'    => $user->id,
-    //         'date'       => $reservationStart->toDateString(),
-    //         'start_time' => $reservationStart->format('H:i'),
-    //         'end_time'   => $reservationEnd->format('H:i'),
-    //     ]);
-
-    //     return response()->json(['message' => 'Zarezerwowano']);
-    // }
 
     public function reserveOld(Request $request)
     {
@@ -1134,74 +1056,41 @@ class ScheduleController extends Controller
             'name'    => $user->name,
             'surname' => $user->surname,
             'email'   => $user->email,
+            'phone'   => $user->phone,
+            'age'   => $user->age_with_suffix,
+            'description'   => $user->opis,
+            'patient_type'   => $user->rodzaj_pacjenta,
             // 'visits'  => $visits,
             'visits'   => $notes
         ]);
     }
 
-    public function updateUserData(Request $request, $id)
+    public function updateUserData(UpdatePatientRequest $request, $id)
     {
         $user = User::findOrFail($id);
 
-        // Walidacja danych
-        $validated = $request->validate([
-            'name'    => 'sometimes|string|max:255',
-            'surname' => 'sometimes|string|max:255',
-            'email'   => [
-                'sometimes',
-                'email',
-                'max:255',
-                Rule::unique('users')->ignore($user->id),
-            ],
-        ]);
+        // Aktualizacja na podstawie zwalidowanych danych
+        $user->update($request->validated());
 
-        // Aktualizacja danych
-        $user->update($validated);
-
-        // Zwracamy zaktualizowanego usera
         return response()->json([
             'message' => 'User updated successfully',
-            'user'    => [
-                'id'      => $user->id,
-                'name'    => $user->name,
-                'surname' => $user->surname,
-                'email'   => $user->email,
-            ]
+            'user'    => $user
         ]);
     }
 
-
-    public function addPatient(Request $request)
+    public function addPatient(StorePatientRequest $request)
     {
-        // Walidacja
-        $request->validate([
-            'name'        => 'required|string|max:255',
-            'surname'     => 'required|string|max:255',
-            'phone'       => 'nullable|string|max:20',
-            'email'       => 'required|email|max:255',
-            'description' => 'nullable|string|max:1000',
-        ]);
-
-        // Sprawdzenie, czy user istnieje
-        $existingUser = User::where('email', $request->email)->first();
-        if ($existingUser) {
-            return response()->json([
-                'message' => 'Pacjent o tym e-mailu już istnieje',
-                'user_id' => $existingUser->id
-            ], 409); // Conflict
-        }
-
-        // Tworzenie nowego usera jako pacjenta
         $user = User::create([
-            'name'        => $request->name,
-            'surname'     => $request->surname,
-            'phone'       => $request->phone,
-            'email'       => $request->email,
-            'password'    => "password", // generujemy losowe hasło
+            'name'     => $request->name,
+            'surname'  => $request->surname,
+            'phone'    => $request->phone,
+            'email'    => $request->email,
+            'password' => "password",
+            'wiek'    => $request->wiek,
+            'opis'    => $request->opis,
+            'rodzaj_pacjenta'    => $request->rodzaj_pacjenta,
         ]);
 
-        // Możemy zapisać description w dodatkowej tabeli np. notes, jeśli chcesz
-        // albo dodać kolumnę 'description' w users i ją tutaj uzupełnić
         if ($request->description) {
             $user->description = $request->description;
             $user->save();
@@ -1209,9 +1098,68 @@ class ScheduleController extends Controller
 
         return response()->json([
             'message' => 'Pacjent dodany pomyślnie',
-            'user' => $user
+            'user'    => $user
         ], 201);
     }
+
+    public function deletePatient(int $id)
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            return response()->json([
+                'message' => 'Pacjent nie został znaleziony'
+            ], 404);
+        }
+
+        $user->delete();
+
+        return response()->json([
+            'message' => 'Pacjent został usunięty pomyślnie'
+        ], 200);
+    }
+
+    // public function addPatient(Request $request)
+    // {
+    //     // Walidacja
+    //     $request->validate([
+    //         'name'        => 'required|string|max:255',
+    //         'surname'     => 'required|string|max:255',
+    //         'phone'       => 'nullable|string|max:20',
+    //         'email'       => 'required|email|max:255',
+    //         'description' => 'nullable|string|max:1000',
+    //     ]);
+
+    //     // Sprawdzenie, czy user istnieje
+    //     $existingUser = User::where('email', $request->email)->first();
+    //     if ($existingUser) {
+    //         return response()->json([
+    //             'message' => 'Pacjent o tym e-mailu już istnieje',
+    //             'user_id' => $existingUser->id
+    //         ], 409); // Conflict
+    //     }
+
+    //     // Tworzenie nowego usera jako pacjenta
+    //     $user = User::create([
+    //         'name'        => $request->name,
+    //         'surname'     => $request->surname,
+    //         'phone'       => $request->phone,
+    //         'email'       => $request->email,
+    //         'password'    => "password", // generujemy losowe hasło
+    //     ]);
+
+    //     // Możemy zapisać description w dodatkowej tabeli np. notes, jeśli chcesz
+    //     // albo dodać kolumnę 'description' w users i ją tutaj uzupełnić
+    //     if ($request->description) {
+    //         $user->description = $request->description;
+    //         $user->save();
+    //     }
+
+    //     return response()->json([
+    //         'message' => 'Pacjent dodany pomyślnie',
+    //         'user' => $user
+    //     ], 201);
+    // }
 
 
 

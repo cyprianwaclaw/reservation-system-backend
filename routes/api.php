@@ -28,6 +28,7 @@ Route::delete('/notes/{noteId}', [ScheduleController::class, 'deleteNote']);
 
 Route::get('/allUsers', [ScheduleController::class, 'allUsers']);
 Route::get('/users/{id}', [ScheduleController::class, 'userByID']);
+Route::patch('/update-patient/{id}', [ScheduleController::class, 'updateUserData']);
 
 Route::post('/add-patients', [ScheduleController::class, 'addPatient']);
 
@@ -36,3 +37,5 @@ Route::post('/end-options', [ScheduleController::class, 'getEndOptions']);
 Route::post('/add-vacations', [ScheduleController::class, 'addVacations']);
 
 Route::post('/fully-available-days', [ScheduleController::class, 'getFullyAvailableDaysForDoctor']);
+
+Route::delete('/patient-delete/{id}', [ScheduleController::class, 'deletePatient']);

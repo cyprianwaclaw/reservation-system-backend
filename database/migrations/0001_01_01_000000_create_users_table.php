@@ -14,12 +14,24 @@ return new class extends Migration
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('surname');          // dodane pole na nazwisko
-            $table->string('phone')->nullable(); // dodany telefon, opcjonalny
+            $table->string('surname');
+            $table->string('phone')->nullable();
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
+
+            $table->unsignedInteger('wiek')->nullable();
+            $table->text('opis')->nullable();
+            $table->enum('rodzaj_pacjenta', [
+                'Prywatny',
+                'Klub gimnastyki',
+                'AWF',
+                'WKS',
+                'Od Grzegorza',
+                'DK',
+                'DT'
+            ])->nullable();
             $table->timestamps();
         });
 
