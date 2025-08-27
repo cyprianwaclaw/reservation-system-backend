@@ -10,6 +10,7 @@ class Visit extends Model
         'doctor_id',
         'user_id',
         'date',
+        'type',
         'start_time',
         'end_time',
     ];

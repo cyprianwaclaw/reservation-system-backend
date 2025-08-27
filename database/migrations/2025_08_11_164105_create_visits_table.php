@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('doctor_id')->constrained()->onDelete('cascade');
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->date('date');
+            $table->text('type');
             $table->time('start_time');
             $table->time('end_time');
             $table->timestamps();

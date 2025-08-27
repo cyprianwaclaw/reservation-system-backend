@@ -212,6 +212,7 @@ class ScheduleController extends Controller
         return response()->json([
             'current_visit' => [
                 'id' => $visit->id,
+                'type' => $visit->type,
                 'date' => Carbon::parse($visit->date)->format('d.m.Y'),
                 'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
                 'end_time' => Carbon::parse($visit->end_time)->format('H:i'),
@@ -226,6 +227,9 @@ class ScheduleController extends Controller
                 'surname' => $visit->user->surname,
                 'email' => $visit->user->email,
                 'phone' => $visit->user->phone,
+                'age' => $visit->user->age_with_suffix,
+                'description' => $visit->user->opis,
+                'type' => $visit->user->rodzaj_pacjenta,
             ],
             'date' => $visit->date,
             'start_time' => $visit->start_time,
@@ -777,6 +781,8 @@ class ScheduleController extends Controller
                 'name'     => $request->name,
                 'surname'  => $request->surname,
                 'phone'    => $request->phone,
+                'opis'    => $request->opis,
+                'wiek'    => $request->wiek,
                 'password' => "password", // losowe hasło, zahashowane
             ]
         );
@@ -797,6 +803,7 @@ class ScheduleController extends Controller
 
         Visit::create([
             'doctor_id'  => $request->doctor_id,
+            'type'  => $request->type,
             'user_id'    => $user->id,
             'date'       => $reservationStart->toDateString(),
             'start_time' => $reservationStart->format('H:i'),

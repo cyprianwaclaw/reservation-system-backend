@@ -55,11 +55,11 @@ class UpdatePatientRequest extends FormRequest
             'phone.regex'      => 'Telefon może zawierać tylko cyfry',
 
             // 'wiek.required'    => 'Pole wiek jest wymagane',
-            'wiek.integer'     => 'Wiek musi być liczbą',
-            'wiek.min'         => 'Wiek musi być większy od zera',
-            'wiek.max'         => 'Wiek nie może przekraczać 120 lat',
+                'wiek.integer'     => 'Wiek musi być liczbą',
+                'wiek.min'         => 'Wiek musi być większy od zera',
+                'wiek.max'         => 'Wiek nie może przekraczać 120 lat',
 
-            'opis.max'         => 'Opis może mieć maksymalnie 1000 znaków',
+                'opis.max'         => 'Opis może mieć maksymalnie 1000 znaków',
 
             // 'rodzaj_pacjenta.required' => 'Pole rodzaj pacjenta jest wymagane',
             'rodzaj_pacjenta.in'       => 'Rodzaj pacjenta musi być jedną z dozwolonych wartości',

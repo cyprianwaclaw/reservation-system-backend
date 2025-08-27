@@ -32,6 +32,12 @@ class NewVisitRequest extends FormRequest
             'date'        => 'required|date',
             'start_time'  => 'required|date_format:H:i',
             'duration'    => 'required|integer|min:1|max:480', // max 8h
+            'type'        => 'required',
+
+            // dodatkowe pola
+            'wiek' => 'nullable|integer|min:1|max:120',
+            'opis' => 'nullable|string|max:1000',
+            // 'rodzaj_pacjenta' => 'nullable|in:Prywatny,Klub gimnastyki,AWF,WKS,Od Grzegorza,DK,DT',
         ];
     }
     /**
@@ -73,6 +79,15 @@ class NewVisitRequest extends FormRequest
             'duration.integer'  => 'Czas trwania musi być liczbą całkowitą.',
             'duration.min'      => 'Czas trwania wizyty nie może być krótszy niż 1 minuta.',
             'duration.max'      => 'Czas trwania wizyty nie może być dłuższy niż 480 minut.',
+
+            'type.required' => 'Rodzaj usługi jest wymagany',
+
+            // dodatkowe pola
+            'wiek.integer'     => 'Wiek musi być liczbą',
+            'wiek.min'         => 'Wiek musi być większy od zera',
+            'wiek.max'         => 'Wiek nie może przekraczać 120 lat',
+
+            'opis.max'         => 'Opis może mieć maksymalnie 1000 znaków',
         ];
     }
 
@@ -99,4 +114,3 @@ class NewVisitRequest extends FormRequest
         throw new ValidationException($validator, $response);
     }
 }
-
