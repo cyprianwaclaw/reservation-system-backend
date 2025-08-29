@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Requests\NewVisitRequest;
 use App\Http\Requests\StorePatientRequest;
 use App\Http\Requests\UpdatePatientRequest;
+use App\Http\Requests\DoctorLoginRequest;
+use Illuminate\Support\Facades\Hash;
+
 
 class ScheduleController extends Controller
 {
@@ -318,58 +321,7 @@ class ScheduleController extends Controller
     }
 
 
-    public function getFullyAvailableDaysForDoctor(Request $request)
-    {
-        $request->validate([
-            'doctor_id' => 'required|exists:doctors,id',
-            'start_date' => 'nullable|date',
-            'days_ahead' => 'nullable|integer|min:1|max:60',
-        ]);
 
-        $doctorId = $request->input('doctor_id');
-        $startDate = $request->input('start_date') ? Carbon::parse($request->input('start_date')) : Carbon::today();
-        $daysAhead = $request->input('days_ahead') ?? 20; // domyślnie 20 dni
-
-        $result = [];
-        $doctor = Doctor::findOrFail($doctorId);
-
-        for ($i = 0; $i < $daysAhead; $i++) {
-            $date = $startDate->copy()->addDays($i);
-
-            // Pomijamy weekendy
-            if ($date->isWeekend()) {
-                continue;
-            }
-
-            // Generujemy wszystkie możliwe sloty dnia (bez uwzględnienia wizyt/przerw)
-            $workStart = Carbon::parse($date->toDateString() . ' 7:30');
-            $workEnd = Carbon::parse($date->toDateString() . ' 21:00');
-            $allSlots = [];
-            $current = $workStart->copy();
-            while ($current->lt($workEnd)) {
-                $slotEnd = $current->copy()->addMinutes(45);
-                if ($slotEnd->gt($workEnd)) break;
-                $allSlots[] = $current->format('H:i');
-                $current->addMinutes(45);
-            }
-
-            // Pobieramy wolne sloty dnia
-            $freeSlots = $this->generateDailySlots($doctor->id, $date);
-
-            // Upewniamy się, że format jest taki sam
-            $freeSlots = array_map(fn ($s) => Carbon::parse($s)->format('H:i'), $freeSlots);
-
-            // Jeśli wszystkie sloty są wolne, dodajemy dzień do wyniku
-            if (!empty($allSlots) && count(array_intersect($allSlots, $freeSlots)) === count($allSlots)) {
-                $result[] = [
-                    'value' => $date->toDateString(),
-                    'label' => $date->format('d.m.Y'),
-                ];
-            }
-        }
-
-        return response()->json($result);
-    }
     public function getEndOptions(Request $request)
     {
         $request->validate([
@@ -437,261 +389,6 @@ class ScheduleController extends Controller
     }
 
 
-    public function getAvailableDays1(Request $request)
-    {
-        $request->validate([
-            'start_date' => 'nullable|date',
-            'days_ahead' => 'nullable|integer|min:1|max:60',
-        ]);
-
-        $startDate = $request->start_date ? Carbon::parse($request->start_date) : Carbon::today();
-        $daysAhead = $request->days_ahead ?? 30;
-
-        $result = [];
-
-        for ($i = 0; $i < $daysAhead; $i++) {
-            $date = $startDate->copy()->addDays($i);
-
-            // Pomijamy weekendy
-            if ($date->isWeekend()) {
-                continue;
-            }
-
-            $availableDoctorsForDate = [];
-            $doctors = Doctor::all();
-
-            foreach ($doctors as $doctor) {
-                // Generujemy sloty 45-minutowe z uwzględnieniem wakacji/przerw i zajętych wizyt
-                $freeSlots = $this->generateDailySlots($doctor->id, $date);
-
-                // Jeśli dzisiaj, filtrujemy sloty w przeszłości
-                if ($date->isToday()) {
-                    $currentTime = Carbon::now()->format('H:i');
-                    $freeSlots = array_filter($freeSlots, fn ($slot) => $slot > $currentTime);
-                }
-                // if ($date->isToday()) {
-                //     $now = Carbon::now();
-                //     $freeSlots = array_filter($freeSlots, function ($slot) use ($now, $date) {
-                //             $slotTime = Carbon::parse($date->toDateString() . ' ' . $slot);
-                //             return $slotTime->greaterThan($now); // lub ->gte($now) jeśli chcesz włączyć bieżącą minutę
-                //         });
-                // }
-                if (!empty($freeSlots)) {
-                    // Pierwszy wolny slot
-                    $firstFreeSlot = reset($freeSlots);
-
-                    $availableDoctorsForDate[] = [
-                        'doctor_id' => $doctor->id,
-                        'name' => $doctor->name,
-                        'surname' => $doctor->surname,
-                        'phone' => $doctor->phone,
-                        'email' => $doctor->email,
-                        'free_slots' => array_values($freeSlots), // reset indeksów
-                        'first_free_slot' => $firstFreeSlot,
-                    ];
-                }
-            }
-
-            if (!empty($availableDoctorsForDate)) {
-                $result[] = [
-                    'date' => $date->toDateString(),
-                    'doctors' => $availableDoctorsForDate,
-                ];
-            }
-        }
-
-        return response()->json($result);
-    }
-
-    // public function getAvailableDays(Request $request)
-    // {
-    //     $request->validate([
-    //         'start_date' => 'nullable|date',
-    //         'days_ahead' => 'nullable|integer|min:1|max:60',
-    //     ]);
-
-    //     $startDate = $request->start_date ? Carbon::parse($request->start_date) : Carbon::today();
-    //     $daysAhead = $request->days_ahead ?? 30;
-
-    //     $result = [];
-
-    //     for ($i = 0; $i < $daysAhead; $i++) {
-    //         $date = $startDate->copy()->addDays($i);
-
-    //         // Pomijamy weekendy
-    //         if ($date->isWeekend()) {
-    //             continue;
-    //         }
-
-    //         $availableDoctorsForDate = [];
-    //         $doctors = Doctor::all();
-
-    //         foreach ($doctors as $doctor) {
-    //             // Generujemy sloty 45-minutowe z uwzględnieniem wakacji/przerw i zajętych wizyt
-    //             $freeSlots = $this->generateDailySlots($doctor->id, $date);
-
-    //             if (!empty($freeSlots)) {
-    //                 $availableDoctorsForDate[] = [
-    //                     'doctor_id' => $doctor->id,
-    //                     'name' => $doctor->name,
-    //                     'surname' => $doctor->surname,
-    //                     'phone' => $doctor->phone,
-    //                     'email' => $doctor->email,
-    //                     'free_slots' => $freeSlots,
-    //                 ];
-    //             }
-    //         }
-
-    //         if (!empty($availableDoctorsForDate)) {
-    //             $result[] = [
-    //                 'date' => $date->toDateString(),
-    //                 'doctors' => $availableDoctorsForDate,
-    //             ];
-    //         }
-    //     }
-
-    //     return response()->json($result);
-    // }
-
-
-    public function getAvailableDays1122(Request $request)
-    {
-        $request->validate([
-            'start_date' => 'nullable|date',
-            'days_ahead' => 'nullable|integer|min:1|max:60',
-        ]);
-
-        $startDate = $request->start_date ? Carbon::parse($request->start_date) : Carbon::today();
-        $daysAhead = $request->days_ahead ?? 30;
-
-        $result = [];
-
-        for ($i = 0; $i < $daysAhead; $i++) {
-            $date = $startDate->copy()->addDays($i);
-
-            if ($date->isWeekend()) {
-                continue;
-            }
-
-            $availableDoctorsForDate = [];
-
-            $doctors = Doctor::all();
-
-            foreach ($doctors as $doctor) {
-
-                // Pobierz grafik lub domyślne godziny
-                $schedule = Schedule::where('doctor_id', $doctor->id)
-                    ->whereDate('date', $date)
-                    ->first();
-
-                if ($schedule) {
-                    $start = Carbon::parse($schedule->start_time);
-                    $end = Carbon::parse($schedule->end_time)->subHour();
-                } else {
-                    $start = $date->copy()->setTime(8, 0);
-                    $end = $date->copy()->setTime(19, 0);
-                }
-
-                if ($date->isToday()) {
-                    $minTime = Carbon::now()->addHours(2);
-                    if ($minTime->gt($end)) {
-                        continue;
-                    }
-                    if ($minTime->gt($start)) {
-                        $start = $minTime;
-                    }
-                }
-
-                $period = CarbonPeriod::create($start, '1 hour', $end);
-
-                $freeSlots = [];
-
-                foreach ($period as $slot) {
-                    $slotStr = $slot->format('H:i');
-
-                    $isReserved = Visit::where('doctor_id', $doctor->id)
-                        ->whereDate('date', $date)
-                        ->whereTime('start_time', $slotStr)
-                        ->exists();
-
-                    if (!$isReserved && !$this->isOnVacationAtTime($doctor->id, $date, $slotStr)) {
-                        $freeSlots[] = $slotStr;
-                    }
-                }
-
-                if (count($freeSlots) > 0) {
-                    $availableDoctorsForDate[] = [
-                        'doctor_id' => $doctor->id,
-                        'name' => $doctor->name,
-                        'surname' => $doctor->surname,
-                        'phone' => $doctor->phone,
-                        'email' => $doctor->email,
-                        'free_slots' => $freeSlots,
-                    ];
-                }
-            }
-
-            if (count($availableDoctorsForDate) > 0) {
-                $result[] = [
-                    'date' => $date->toDateString(),
-                    'doctors' => $availableDoctorsForDate,
-                ];
-            }
-        }
-
-        return response()->json($result);
-    }
-
-    public function getFreeDoctors(Request $request)
-    {
-        $request->validate([
-            'date' => 'required|date',
-        ]);
-
-        $date = Carbon::parse($request->date);
-
-        // Tylko pon–pt
-        if ($date->isWeekend()) {
-            return response()->json([]);
-        }
-
-        // Lista wszystkich lekarzy
-        $doctors = Doctor::all();
-
-        $availableDoctors = $doctors->filter(function ($doctor) use ($date) {
-            // Sprawdź urlop
-            $isOnVacation = Vacation::where('doctor_id', $doctor->id)
-                ->whereDate('start_date', '<=', $date)
-                ->whereDate('end_date', '>=', $date)
-                ->exists();
-
-            if ($isOnVacation) return false;
-
-            // Sprawdź czy ma wolne godziny
-            $hours = $this->generateDailySlots($doctor->id, $date);
-            return count($hours) > 0;
-        })->values();
-
-        return response()->json($availableDoctors);
-    }
-    public function getFreeSlotsForDoctor(Request $request)
-    {
-        $request->validate([
-            'doctor_id' => 'required|exists:doctors,id',
-            'date' => 'required|date',
-        ]);
-
-        $date = Carbon::parse($request->date);
-
-        // Tylko pon–pt
-        if ($date->isWeekend()) {
-            return response()->json([]);
-        }
-
-        $slots = $this->generateDailySlots($request->doctor_id, $date);
-
-        return response()->json($slots);
-    }
 
     public function getAllVisits(Request $request)
     {
@@ -721,24 +418,37 @@ class ScheduleController extends Controller
         $startDateFormatted = $startDate->format('Y-m-d');
         $endDateFormatted = $endDate->format('Y-m-d');
 
+
         // Pobierz wizyty z zakresu dat
         $visits = Visit::with(['doctor', 'user'])
             ->whereBetween('date', [$startDateFormatted, $endDateFormatted])
             ->get();
 
-        $result = $visits->map(function ($visit) {
-            return [
-                'visit_id' => $visit->id,
-                'doctor_id' => $visit->doctor->id,
-                'doctor_name' => $visit->doctor->name,
-                'doctor_surname' => $visit->doctor->surname,
-                'user_name' => $visit->user->name,
-                'user_surname' => $visit->user->surname,
-                'date' => $visit->date,
-                'start_time' => $visit->start_time,
-                'end_time' => $visit->end_time,
-            ];
-        });
+        $result = $visits->map(
+            function ($visit) {
+                $lastUserNote = $visit->user->notes()
+                    ->orderByDesc('note_date')
+                    ->first();
+
+                return [
+                    'visit_id' => $visit->id,
+                    'doctor_id' => $visit->doctor->id,
+                    'doctor_name' => $visit->doctor->name,
+                    'doctor_surname' => $visit->doctor->surname,
+                    'user_name' => $visit->user->name,
+                    'user_surname' => $visit->user->surname,
+                    'phone' => $visit->user->phone,
+                    'last_user_note' => $lastUserNote ? [
+                        'note_date' => $lastUserNote->note_date->format('d.m.Y'),
+                        'text' => $lastUserNote->text,
+                        'attachments' => $lastUserNote->attachments,
+                    ] : null,
+                    'date' => $visit->date,
+                    'start_time' => $visit->start_time,
+                    'end_time' => $visit->end_time,
+                ];
+            }
+        );
 
         return response()->json($result);
     }
@@ -811,73 +521,6 @@ class ScheduleController extends Controller
         ]);
 
         return response()->json(['message' => 'Zarezerwowano'], 201);
-    }
-
-
-    public function reserveOld(Request $request)
-    {
-        $request->validate([
-            'doctor_id' => 'required|exists:doctors,id',
-            'name' => 'required|string|max:255',
-            'surname' => 'required|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'email' => 'required|email|max:255',
-            'date' => 'required|date',
-            'hour' => 'required|date_format:H:i',
-        ]);
-
-        $reservationDateTime = Carbon::parse($request->date . ' ' . $request->hour);
-
-        // Sprawdź czy termin jest w przeszłości
-        if ($reservationDateTime->lt(Carbon::now())) {
-            return response()->json(['message' => 'Nie można rezerwować terminów w przeszłości'], 422);
-        }
-
-        // Sprawdź czy to nie weekend
-        if ($reservationDateTime->isWeekend()) {
-            return response()->json(['message' => 'Nie można rezerwować w weekendy'], 422);
-        }
-
-        // Sprawdź czy lekarz ma urlop w tym dniu
-        $hasVacation = Vacation::where('doctor_id', $request->doctor_id)
-            ->whereDate('start_date', '<=', $reservationDateTime->toDateString())
-            ->whereDate('end_date', '>=', $reservationDateTime->toDateString())
-            ->exists();
-
-        if ($hasVacation) {
-            return response()->json(['message' => 'Lekarz jest na urlopie w tym dniu'], 422);
-        }
-
-        $user = User::where('email', $request->email)->first();
-
-        if (!$user) {
-            $user = User::create([
-                'name' => $request->name,
-                'surname' => $request->surname,
-                'phone' => $request->phone,
-                'email' => $request->email,
-                'password' => bcrypt(str()->random(12)),
-            ]);
-        }
-
-        $exists = Visit::where('doctor_id', $request->doctor_id)
-            ->whereDate('date', $request->date)
-            ->whereTime('start_time', $request->hour)
-            ->exists();
-
-        if ($exists) {
-            return response()->json(['message' => 'Slot już zajęty'], 409);
-        }
-
-        Visit::create([
-            'doctor_id' => $request->doctor_id,
-            'user_id' => $user->id,
-            'date' => $request->date,
-            'start_time' => $request->hour,
-            'end_time' => Carbon::parse($request->hour)->addHour(),
-        ]);
-
-        return response()->json(['message' => 'Zarezerwowano']);
     }
 
 
@@ -1126,114 +769,7 @@ class ScheduleController extends Controller
         ], 200);
     }
 
-    // public function addPatient(Request $request)
-    // {
-    //     // Walidacja
-    //     $request->validate([
-    //         'name'        => 'required|string|max:255',
-    //         'surname'     => 'required|string|max:255',
-    //         'phone'       => 'nullable|string|max:20',
-    //         'email'       => 'required|email|max:255',
-    //         'description' => 'nullable|string|max:1000',
-    //     ]);
-
-    //     // Sprawdzenie, czy user istnieje
-    //     $existingUser = User::where('email', $request->email)->first();
-    //     if ($existingUser) {
-    //         return response()->json([
-    //             'message' => 'Pacjent o tym e-mailu już istnieje',
-    //             'user_id' => $existingUser->id
-    //         ], 409); // Conflict
-    //     }
-
-    //     // Tworzenie nowego usera jako pacjenta
-    //     $user = User::create([
-    //         'name'        => $request->name,
-    //         'surname'     => $request->surname,
-    //         'phone'       => $request->phone,
-    //         'email'       => $request->email,
-    //         'password'    => "password", // generujemy losowe hasło
-    //     ]);
-
-    //     // Możemy zapisać description w dodatkowej tabeli np. notes, jeśli chcesz
-    //     // albo dodać kolumnę 'description' w users i ją tutaj uzupełnić
-    //     if ($request->description) {
-    //         $user->description = $request->description;
-    //         $user->save();
-    //     }
-
-    //     return response()->json([
-    //         'message' => 'Pacjent dodany pomyślnie',
-    //         'user' => $user
-    //     ], 201);
-    // }
-
-
-
-    public function updateVisit11(Request $request, $visitId)
-    {
-        Log::info('Dane requestu do updateVisit1:', $request->all());
-
-        $request->validate([
-            'date' => 'required|date',
-            'hour' => 'required|date_format:H:i',
-            'doctor_id' => 'required|exists:doctors,id', // sprawdzamy czy lekarz istnieje
-        ]);
-
-        $visit = Visit::find($visitId);
-        if (!$visit) {
-            return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
-        }
-
-        $newDoctorId = $request->doctor_id;
-        $newDateTime = Carbon::parse($request->date . ' ' . $request->hour);
-
-        // Sprawdź czy nowy termin nie jest w przeszłości
-        if ($newDateTime->lt(Carbon::now())) {
-            return response()->json(['error' => 'Nie można ustawić wizyty w przeszłości'], 422);
-        }
-
-        // Sprawdź czy to nie weekend
-        if ($newDateTime->isWeekend()) {
-            return response()->json(['error' => 'Nie można ustawić wizyty w weekendy'], 422);
-        }
-
-        // Sprawdź czy lekarz nie ma urlopu w tym dniu
-        $hasVacation = Vacation::where('doctor_id', $newDoctorId)
-            ->whereDate('start_date', '<=', $newDateTime->toDateString())
-            ->whereDate('end_date', '>=', $newDateTime->toDateString())
-            ->exists();
-
-        if ($hasVacation) {
-            return response()->json(['error' => 'Lekarz jest na urlopie w tym dniu'], 422);
-        }
-
-        // Sprawdź czy slot jest wolny (pomijając obecną wizytę)
-        $exists = Visit::where('doctor_id', $newDoctorId)
-            ->whereDate('date', $request->date)
-            ->whereTime('start_time', $request->hour)
-            ->where('id', '!=', $visit->id)
-            ->exists();
-
-        if ($exists) {
-            return response()->json(['error' => 'Slot jest już zajęty'], 409);
-        }
-
-        // Aktualizacja wizyty
-        $visit->doctor_id = $newDoctorId;
-        $visit->date = $request->date;
-        $visit->start_time = $request->hour;
-        $visit->end_time = Carbon::parse($request->hour)->addHour();
-        $visit->save();
-        Log::info('Dane requestu do updateVisit1:', $request->all());
-        return response()->json([
-            'success' => true,
-            'message' => 'Wizyta zaktualizowana',
-            'request' => $request->all(),
-            'visit' => $visit
-        ]);
-    }
-
+  
     // Anulowanie wizyty
     public function cancel($id)
     {
@@ -1243,6 +779,35 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Anulowano']);
         }
 
-        return response()->json(['message' => 'Nie znaleziono rezerwacji'], 404);
+        return response()->json(['mepokaz znowu wszystko co ssage' => 'Nie znaleziono rezerwacji'], 404);
+    }
+
+
+    public function loginDoctor(DoctorLoginRequest $request)
+    {
+        $doctor = Doctor::where('email', $request->email)->first();
+
+        if (!$doctor || !Hash::check($request->password, $doctor->password)) {
+            return response()->json([
+                'errors' => [
+                    'email' => [" "],
+                    'password' => [" "],
+                    'message' => 'Nieprawidłowy email lub hasło',
+                ]
+            ], 401);
+        }
+
+        // Jeśli używasz Sanctum (polecam):
+        $token = $doctor->createToken('doctor_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Zalogowano pomyślnie.',
+            'doctor' => [
+                'id' => $doctor->id,
+                'name' => $doctor->name,
+                'email' => $doctor->email,
+            ],
+            'token' => $token,
+        ], 200);
     }
 }
