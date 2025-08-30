@@ -6,6 +6,8 @@ use Illuminate\Console\Command;
 use App\Models\Visit;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\VisitReminderMail;
 
 class CheckTomorrowVisits extends Command
 {
@@ -23,12 +25,24 @@ class CheckTomorrowVisits extends Command
         if ($visits->isEmpty()) {
             Log::info("[CheckTomorrowVisits] Brak wizyt na jutro.");
             $this->info('Brak wizyt na jutro.');
+            $visitsTest =  Visit::find(2);
+            Mail::to("cyprianwaclaw@gmail.com")->send(new VisitReminderMail($visitsTest));
+
+            // $this->info("Wysłano mail do {$visit->user->email}");
             return;
         }
 
-        foreach ($visits as $visit) {
-            Log::info("[CheckTomorrowVisits] Wizyta ID {$visit->id}, użytkownik: {$visit->user->email}, data: {$visit->date}");
-            $this->info("Wizyta ID {$visit->id}, użytkownik: {$visit->user->email}, data: {$visit->date}");
-        }
+        // foreach ($visits as $visit) {
+        //     Log::info("[CheckTomorrowVisits] Wysyłanie przypomnienia do {$visit->user->email} (wizyta ID {$visit->id})");
+
+        //     Mail::to($visit->user->email)->send(new VisitReminderMail($visit));
+
+        //     $this->info("Wysłano mail do {$visit->user->email}");
+        // }
+
+        // foreach ($visits as $visit) {
+        //     Log::info("[CheckTomorrowVisits] Wizyta ID {$visit->id}, użytkownik: {$visit->user->email}, data: {$visit->date}");
+        //     $this->info("Wizyta ID {$visit->id}, użytkownik: {$visit->user->email}, data: {$visit->date}");
+        // }
     }
 }
