@@ -18,7 +18,9 @@ use App\Http\Requests\UpdatePatientRequest;
 use App\Http\Requests\DoctorLoginRequest;
 use Illuminate\Support\Facades\Hash;
 use App\Mail\VisitConfirmationMail;
+use App\Mail\VisitCancelledMail;
 use Illuminate\Support\Facades\Mail;
+use App\Mail\VisitRescheduledSimpleMail;
 
 
 class ScheduleController extends Controller
@@ -598,11 +600,92 @@ class ScheduleController extends Controller
     // }
 
 
+    // public function updateVisit(Request $request, $visitId)
+    // {
+    //     Log::info('Dane requestu przed walidacją:', $request->all());
+
+    //     // Walidacja z przechwyceniem wyjątków
+    //     try {
+    //         $validated = $request->validate([
+    //             'date' => 'required|date',
+    //             'hour' => 'required|date_format:H:i',
+    //             'doctor_id' => 'required|exists:doctors,id',
+    //         ]);
+    //     } catch (\Illuminate\Validation\ValidationException $e) {
+    //         Log::error('Błąd walidacji:', $e->errors());
+    //         return response()->json([
+    //             'success' => false,
+    //             'errors' => $e->errors()
+    //         ], 422);
+    //     }
+
+    //     $visit = Visit::find($visitId);
+    //     if (!$visit) {
+    //         return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
+    //     }
+
+    //     $newDoctorId = $validated['doctor_id'];
+    //     $newDateTime = Carbon::parse($validated['date'] . ' ' . $validated['hour']);
+    //     $newEndTime = $newDateTime->copy()->addHour();
+
+    //     // Sprawdź czy nowy termin nie jest w przeszłości
+    //     if ($newDateTime->lt(Carbon::now())) {
+    //         return response()->json(['error' => 'Nie można ustawić wizyty w przeszłości'], 422);
+    //     }
+
+    //     // Sprawdź czy to nie weekend
+    //     if ($newDateTime->isWeekend()) {
+    //         return response()->json(['error' => 'Nie można ustawić wizyty w weekendy'], 422);
+    //     }
+
+    //     // Sprawdź czy lekarz nie ma urlopu w tym dniu i godzinach
+    //     $hasVacation = Vacation::where('doctor_id', $newDoctorId)
+    //         ->whereDate('start_date', '<=', $newDateTime->toDateString())
+    //         ->whereDate('end_date', '>=', $newDateTime->toDateString())
+    //         ->where(function ($q) use ($newDateTime, $newEndTime) {
+    //             $q->whereTime('start_time', '<', $newEndTime->format('H:i'))
+    //                 ->whereTime('end_time', '>', $newDateTime->format('H:i'));
+    //         })
+    //         ->exists();
+
+    //     if ($hasVacation) {
+    //         return response()->json(['error' => 'Lekarz jest na urlopie w tym czasie'], 422);
+    //     }
+
+    //     // Sprawdź czy slot jest wolny (pomijając obecną wizytę)
+    //     $exists = Visit::where('doctor_id', $newDoctorId)
+    //         ->whereDate('date', $validated['date'])
+    //         ->whereTime('start_time', '<', $newEndTime->format('H:i'))
+    //         ->whereTime('end_time', '>', $newDateTime->format('H:i'))
+    //         ->where('id', '!=', $visit->id)
+    //         ->exists();
+
+    //     if ($exists) {
+    //         return response()->json(['error' => 'Slot jest już zajęty'], 409);
+    //     }
+
+    //     // Aktualizacja wizyty
+    //     $visit->doctor_id = $newDoctorId;
+    //     $visit->date = $validated['date'];
+    //     $visit->start_time = $validated['hour'];
+    //     $visit->end_time = $newEndTime;
+    //     $visit->save();
+
+    //     Log::info('Wizyta zaktualizowana:', $visit->toArray());
+
+    //     return response()->json([
+    //         'success' => true,
+    //         'message' => 'Wizyta zaktualizowana',
+    //         'request' => $validated,
+    //         'visit' => $visit
+    //     ]);
+    // }
+
     public function updateVisit(Request $request, $visitId)
     {
         Log::info('Dane requestu przed walidacją:', $request->all());
 
-        // Walidacja z przechwyceniem wyjątków
+        // Walidacja
         try {
             $validated = $request->validate([
                 'date' => 'required|date',
@@ -622,9 +705,15 @@ class ScheduleController extends Controller
             return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
         }
 
+        // kopiujemy stare dane wizyty do maila
+        $oldVisit = clone $visit;
+
         $newDoctorId = $validated['doctor_id'];
         $newDateTime = Carbon::parse($validated['date'] . ' ' . $validated['hour']);
-        $newEndTime = $newDateTime->copy()->addHour();
+
+        // 🔹 Zachowujemy długość starej wizyty
+        $oldDuration = Carbon::parse($visit->end_time)->diffInMinutes(Carbon::parse($visit->start_time));
+        $newEndTime = $newDateTime->copy()->addMinutes($oldDuration);
 
         // Sprawdź czy nowy termin nie jest w przeszłości
         if ($newDateTime->lt(Carbon::now())) {
@@ -671,15 +760,16 @@ class ScheduleController extends Controller
 
         Log::info('Wizyta zaktualizowana:', $visit->toArray());
 
+        // 🔹 Wyślij maila o zmianie terminu
+        Mail::to($visit->user->email)->send(new VisitRescheduledSimpleMail($oldVisit, $visit));
+
         return response()->json([
             'success' => true,
-            'message' => 'Wizyta zaktualizowana',
+            'message' => 'Wizyta zaktualizowana i wysłano powiadomienie e-mail',
             'request' => $validated,
             'visit' => $visit
         ]);
     }
-
-
 
     public function allUsers(Request $request)
     {
@@ -847,15 +937,19 @@ class ScheduleController extends Controller
     // Anulowanie wizyty
     public function cancel($id)
     {
-        $deleted = Visit::where('id', $id)->delete();
+        $visit = Visit::find($id);
 
-        if ($deleted) {
-            return response()->json(['message' => 'Anulowano']);
+        if (!$visit) {
+            return response()->json(['message' => 'Nie znaleziono rezerwacji'], 404);
         }
 
-        return response()->json(['mepokaz znowu wszystko co ssage' => 'Nie znaleziono rezerwacji'], 404);
-    }
+        // Wyślij mail zanim usuniemy wizytę
+        Mail::to($visit->user->email)->send(new VisitCancelledMail($visit));
 
+        $visit->delete();
+
+        return response()->json(['message' => 'Anulowano i wysłano powiadomienie e-mail']);
+    }
 
     public function loginDoctor(DoctorLoginRequest $request)
     {
