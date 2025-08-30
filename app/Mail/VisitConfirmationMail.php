@@ -29,7 +29,7 @@ class VisitConfirmationMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Potwierdzenie reerwacji wizyty',
+            subject: 'Potwierdzenie rezerwacji wizyty',
         );
     }
 

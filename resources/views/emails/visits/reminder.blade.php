@@ -25,7 +25,7 @@
             color: #f43737;
             text-decoration: none;
             border: 1px solid #f43737;
-            background: white;
+            background: transparent;
             text-align: center;
             white-space: nowrap;
             -webkit-user-select: none;
@@ -128,12 +128,17 @@
         }
 
         .button-container {
-            margin-top: 28px;
+            margin-top: 35px;
             margin-bottom: 40px;
             gap: 12px;
             display: flex;
         }
 
+        @media (max-width: 768px) {
+            .button-container {
+                flex-direction: column;
+            }
+        }
 
 
         /* 🔹 Nowe style dla sekcji informacyjnej */
@@ -184,6 +189,18 @@
             text-decoration: underline;
         }
 
+        .info-link-link {
+            color: #31a9ce;
+            font-size: 15px;
+            text-decoration: underline;
+        }
+
+        .info-link-link-line {
+            color: #d8d8d8;
+            font-size: 18px;
+            margin: 0 6px;
+        }
+
     </style>
 </head>
 <body>
@@ -199,40 +216,29 @@
                 <p class="text-list">
                     Zabieg: <span class="text-list-data"> {{ $visit->type }}</span>
                 </p>
-
                 <p class="text-list">
                     Termin: <span class="text-list-data"> {{ \Carbon\Carbon::parse($visit->date)->format('d.m.Y') }}</span>
-
                 </p>
                 <p class="text-list">
                     Godzina: <span class="text-list-data">{{ \Carbon\Carbon::parse($visit->start_time)->format('H:i') }} - {{ \Carbon\Carbon::parse($visit->end_time)->format('H:i') }}</span>
-
                 </p>
                 <p class="text-list">
                     Lekarz: <span class="text-list-data">{{ $visit->doctor->name }} {{ $visit->doctor->surname }}</span>
-
-
                 </p>
             </div>
-
 
             @php
             $frontendUrl = env('FRONTEND_URL', 'https://panel.fizjoterapia-kaczmarek.pl');
             @endphp
 
             <div class="button-container">
-                <!-- Zmień termin -->
                 <a href="{{ $frontendUrl.'/zmien-termin-'.$visit->user->id.'-'.$visit->id }}" class="button">
                     Zmień termin
                 </a>
-
-                <!-- Odwołaj wizytę -->
                 <a href="{{ $frontendUrl.'/odwolaj-wizyte-'.$visit->user->id.'-'.$visit->id }}" class="remove-button">
                     Odwołaj wizytę
                 </a>
             </div>
-
-
             <div class="info-section">
                 <h3 class="info-title">Jak przygotować się do wizyty?</h3>
                 <ul class="info-list">
@@ -256,6 +262,15 @@
             </div>
             <p class="before-footer">Do zobaczenia!<br>Zespół Fizjoterapia Kaczmarek</p>
         </div>
+        <div class="info-section" style="text-align: center; margin-top: 25px; padding-top: 30px;">
+            <p class="info-title" style="margin-bottom: 14px;">Przydatne linki</p>
+            <p style="margin: 7px 0;">
+                <a href="https://fizjoterapia-kaczmarek.pl" class="info-link-link">Fizjoterapia Kaczmarek</a> <span class="info-link-link-line">|</span>
+                <a href="https://centrumzdrowiabiegacza.pl" class="info-link-link">Centrum Zdrowia Biegacza</a> <span class="info-link-link-line">|</span>
+                <a href="https://www.facebook.com/fizjoterapia.kaczmarek" class="info-link-link">Facebook</a>
+            </p>
+        </div>
+
         <div class="footer">
             © {{ date('Y') }} Fizjoterapia Kaczmarek
         </div>

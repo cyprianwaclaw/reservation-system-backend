@@ -17,6 +17,8 @@ use App\Http\Requests\StorePatientRequest;
 use App\Http\Requests\UpdatePatientRequest;
 use App\Http\Requests\DoctorLoginRequest;
 use Illuminate\Support\Facades\Hash;
+use App\Mail\VisitConfirmationMail;
+use Illuminate\Support\Facades\Mail;
 
 
 class ScheduleController extends Controller
@@ -456,22 +458,18 @@ class ScheduleController extends Controller
 
     public function reserve(NewVisitRequest $request)
     {
-
         $validated = $request->validated();
 
         $reservationStart = Carbon::parse($validated['date'] . ' ' . $validated['start_time']);
         $reservationEnd   = $reservationStart->copy()->addMinutes($validated['duration']);
 
-
         if ($reservationEnd->lt(Carbon::now())) {
             return response()->json(['message' => 'Nie można rezerwować zakończonych terminów'], 422);
         }
 
-
         if ($reservationStart->isWeekend()) {
             return response()->json(['message' => 'Nie można rezerwować w weekendy'], 422);
         }
-
 
         $hasVacation = Vacation::where('doctor_id', $request->doctor_id)
             ->where(function ($q) use ($reservationStart, $reservationEnd) {
@@ -484,19 +482,17 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Lekarz jest na urlopie w tym terminie'], 422);
         }
 
-
         $user = User::firstOrCreate(
             ['email' => $request->email],
             [
                 'name'     => $request->name,
                 'surname'  => $request->surname,
                 'phone'    => $request->phone,
-                'opis'    => $request->opis,
-                'wiek'    => $request->wiek,
-                'password' => "password", // losowe hasło, zahashowane
+                'opis'     => $request->opis,
+                'wiek'     => $request->wiek,
+                'password' => bcrypt("password"), // zahashowane hasło
             ]
         );
-
 
         $exists = Visit::where('doctor_id', $request->doctor_id)
             ->where('date', $reservationStart->toDateString())
@@ -510,18 +506,96 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Slot już zajęty'], 409);
         }
 
-
-        Visit::create([
+        // 🔹 Tworzymy wizytę i zapisujemy w zmiennej
+        $visit = Visit::create([
             'doctor_id'  => $request->doctor_id,
-            'type'  => $request->type,
+            'type'       => $request->type,
             'user_id'    => $user->id,
             'date'       => $reservationStart->toDateString(),
             'start_time' => $reservationStart->format('H:i'),
             'end_time'   => $reservationEnd->format('H:i'),
         ]);
 
-        return response()->json(['message' => 'Zarezerwowano'], 201);
+        // 🔹 Wyślij maila z potwierdzeniem
+        Mail::to($visit->user->email)->send(new VisitConfirmationMail($visit));
+
+        // 🔹 Zwracamy cały obiekt wizyty w odpowiedzi
+        return response()->json([
+            'message' => 'Zarezerwowano',
+            // 'visit'   => $visit->load('user', 'doctor') // jeśli chcesz od razu usera i lekarza
+        ], 201);
+
     }
+    // public function reserve(NewVisitRequest $request)
+    // {
+
+    //     $validated = $request->validated();
+
+    //     $reservationStart = Carbon::parse($validated['date'] . ' ' . $validated['start_time']);
+    //     $reservationEnd   = $reservationStart->copy()->addMinutes($validated['duration']);
+
+
+    //     if ($reservationEnd->lt(Carbon::now())) {
+    //         return response()->json(['message' => 'Nie można rezerwować zakończonych terminów'], 422);
+    //     }
+
+
+    //     if ($reservationStart->isWeekend()) {
+    //         return response()->json(['message' => 'Nie można rezerwować w weekendy'], 422);
+    //     }
+
+
+    //     $hasVacation = Vacation::where('doctor_id', $request->doctor_id)
+    //         ->where(function ($q) use ($reservationStart, $reservationEnd) {
+    //             $q->whereRaw('TIMESTAMP(start_date, COALESCE(start_time, "00:00:00")) < ?', [$reservationEnd])
+    //                 ->whereRaw('TIMESTAMP(end_date,   COALESCE(end_time, "23:59:59")) > ?', [$reservationStart]);
+    //         })
+    //         ->exists();
+
+    //     if ($hasVacation) {
+    //         return response()->json(['message' => 'Lekarz jest na urlopie w tym terminie'], 422);
+    //     }
+
+
+    //     $user = User::firstOrCreate(
+    //         ['email' => $request->email],
+    //         [
+    //             'name'     => $request->name,
+    //             'surname'  => $request->surname,
+    //             'phone'    => $request->phone,
+    //             'opis'    => $request->opis,
+    //             'wiek'    => $request->wiek,
+    //             'password' => "password", // losowe hasło, zahashowane
+    //         ]
+    //     );
+
+
+    //     $exists = Visit::where('doctor_id', $request->doctor_id)
+    //         ->where('date', $reservationStart->toDateString())
+    //         ->where(function ($query) use ($reservationStart, $reservationEnd) {
+    //             $query->where('start_time', '<', $reservationEnd->format('H:i'))
+    //                 ->where('end_time',   '>', $reservationStart->format('H:i'));
+    //         })
+    //         ->exists();
+
+    //     if ($exists) {
+    //         return response()->json(['message' => 'Slot już zajęty'], 409);
+    //     }
+
+
+    //     Visit::create([
+    //         'doctor_id'  => $request->doctor_id,
+    //         'type'  => $request->type,
+    //         'user_id'    => $user->id,
+    //         'date'       => $reservationStart->toDateString(),
+    //         'start_time' => $reservationStart->format('H:i'),
+    //         'end_time'   => $reservationEnd->format('H:i'),
+    //     ]);
+
+    //     Mail::to($visit->user->email)->send(new VisitConfirmationMail($visit));
+
+    //     return response()->json(['message' => 'Zarezerwowano'], 201);
+    // }
 
 
     public function updateVisit(Request $request, $visitId)
@@ -769,7 +843,7 @@ class ScheduleController extends Controller
         ], 200);
     }
 
-  
+
     // Anulowanie wizyty
     public function cancel($id)
     {

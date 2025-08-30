@@ -61,7 +61,7 @@
             color: #f43737;
             text-decoration: none;
             border: 1px solid #f43737;
-            background: white;
+            background: transparent;
             text-align: center;
             white-space: nowrap;
             -webkit-user-select: none;
@@ -127,10 +127,16 @@
         }
 
         .button-container {
-            margin-top: 28px;
+            margin-top: 35px;
             margin-bottom: 40px;
             gap: 12px;
             display: flex;
+        }
+
+        @media (max-width: 768px) {
+            .button-container {
+                flex-direction: column;
+            }
         }
 
         /* 🔹 Nowe style dla sekcji informacyjnej */
@@ -179,6 +185,18 @@
         .info-link {
             color: #31a9ce;
             text-decoration: underline;
+        }
+
+        .info-link-link {
+            color: #31a9ce;
+            font-size: 15px;
+            text-decoration: underline;
+        }
+
+        .info-link-link-line {
+            color: #d8d8d8;
+            font-size: 18px;
+            margin: 0 6px;
         }
 
     </style>
@@ -231,6 +249,15 @@
 
             <p class="before-footer">Do zobaczenia!<br>Zespół Fizjoterapia Kaczmarek</p>
         </div>
+        <div class="info-section" style="text-align: center; margin-top: 25px; padding-top: 30px;">
+            <p class="info-title" style="margin-bottom: 14px;">Przydatne linki</p>
+            <p style="margin: 7px 0;">
+                <a href="https://fizjoterapia-kaczmarek.pl" class="info-link-link">Fizjoterapia Kaczmarek</a> <span class="info-link-link-line">|</span>
+                <a href="https://centrumzdrowiabiegacza.pl" class="info-link-link">Centrum Zdrowia Biegacza</a> <span class="info-link-link-line">|</span>
+                <a href="https://www.facebook.com/fizjoterapia.kaczmarek" class="info-link-link">Facebook</a>
+            </p>
+        </div>
+
         <div class="footer">
             © {{ date('Y') }} Fizjoterapia Kaczmarek
         </div>
