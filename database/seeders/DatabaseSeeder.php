@@ -29,17 +29,17 @@ class DatabaseSeeder extends Seeder
             'password' => bcrypt('haslo123'),
         ]);
         Doctor::create([
-            'name' => 'Asia',
-            'surname' => 'Jachym-Drewniak',
-            'phone' => '123456789',
-            'email' => 'test2@test.pl',
-            'password' => bcrypt('haslo123'),
-        ]);
-        Doctor::create([
             'name' => 'Ola',
             'surname' => 'Test',
             'phone' => '123456789',
             'email' => 'test3@test.pl',
+            'password' => bcrypt('haslo123'),
+        ]);
+        Doctor::create([
+            'name' => 'Asia',
+            'surname' => 'Jachym-Drewniak',
+            'phone' => '123456789',
+            'email' => 'test2@test.pl',
             'password' => bcrypt('haslo123'),
         ]);
     }

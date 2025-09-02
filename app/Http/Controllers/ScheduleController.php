@@ -262,6 +262,68 @@ class ScheduleController extends Controller
         ]);
     }
 
+    // public function getAvailableDays(Request $request)
+    // {
+    //     $request->validate([
+    //         'start_date' => 'nullable|date',
+    //         'days_ahead' => 'nullable|integer|min:1|max:60',
+    //     ]);
+
+    //     $startDate = $request->start_date ? Carbon::parse($request->start_date) : Carbon::today();
+    //     $daysAhead = $request->days_ahead ?? 30;
+
+    //     $result = [];
+
+    //     for ($i = 0; $i < $daysAhead; $i++) {
+    //         $date = $startDate->copy()->addDays($i);
+
+    //         // Pomijamy weekendy
+    //         if ($date->isWeekend()) {
+    //             continue;
+    //         }
+
+    //         $availableDoctorsForDate = [];
+    //         $doctors = Doctor::all();
+
+    //         foreach ($doctors as $doctor) {
+    //             $freeSlots = $this->generateDailySlots($doctor->id, $date);
+
+    //             if ($date->isToday()) {
+    //                 $now = Carbon::now('Europe/Warsaw'); // teraz w lokalnej strefie
+    //                 $freeSlots = array_filter($freeSlots, function ($slot) use ($now, $date) {
+    //                     // łączenie daty slotu z lokalną strefą
+    //                     $slotTime = Carbon::createFromFormat('Y-m-d H:i', $date->toDateString() . ' ' . $slot, 'Europe/Warsaw');
+    //                     return $slotTime->greaterThan($now); // tylko sloty w przyszłości
+    //                 });
+    //             }
+
+    //             $now = Carbon::now()->setTimezone('Europe/Warsaw');
+    //             if (!empty($freeSlots)) {
+    //                 $firstFreeSlot = reset($freeSlots); // pierwszy wolny slot z przefiltrowanych
+
+    //                 $availableDoctorsForDate[] = [
+    //                     'doctor_id' => $doctor->id,
+    //                     'name' => $doctor->name,
+    //                     'surname' => $doctor->surname,
+    //                     // 'phone' => $doctor->phone,
+    //                     // 'email' => $doctor->email,
+    //                     'free_slots' => array_values($freeSlots),
+    //                     // 'first_free_slot' => $firstFreeSlot,
+    //                 ];
+    //             }
+    //         }
+
+    //         if (!empty($availableDoctorsForDate)) {
+    //             $result[] = [
+    //                 'date' => $date->toDateString(),
+    //                 'doctors' => $availableDoctorsForDate,
+    //             ];
+    //         }
+    //     }
+
+    //     return response()->json($result);
+    // }
+
     public function getAvailableDays(Request $request)
     {
         $request->validate([
@@ -271,6 +333,13 @@ class ScheduleController extends Controller
 
         $startDate = $request->start_date ? Carbon::parse($request->start_date) : Carbon::today();
         $daysAhead = $request->days_ahead ?? 30;
+
+        // 🔐 Sprawdzenie czy jest token Bearer
+        $authHeader = $request->header('Authorization');
+        if (empty($authHeader) || !str_starts_with($authHeader, 'Bearer ')) {
+            // Jeśli brak tokenu → ogranicz do 15 dni
+            $daysAhead = min($daysAhead, 15);
+        }
 
         $result = [];
 
@@ -289,26 +358,19 @@ class ScheduleController extends Controller
                 $freeSlots = $this->generateDailySlots($doctor->id, $date);
 
                 if ($date->isToday()) {
-                    $now = Carbon::now('Europe/Warsaw'); // teraz w lokalnej strefie
+                    $now = Carbon::now('Europe/Warsaw');
                     $freeSlots = array_filter($freeSlots, function ($slot) use ($now, $date) {
-                        // łączenie daty slotu z lokalną strefą
                         $slotTime = Carbon::createFromFormat('Y-m-d H:i', $date->toDateString() . ' ' . $slot, 'Europe/Warsaw');
-                        return $slotTime->greaterThan($now); // tylko sloty w przyszłości
+                        return $slotTime->greaterThan($now);
                     });
                 }
 
-                $now = Carbon::now()->setTimezone('Europe/Warsaw');
                 if (!empty($freeSlots)) {
-                    $firstFreeSlot = reset($freeSlots); // pierwszy wolny slot z przefiltrowanych
-
                     $availableDoctorsForDate[] = [
                         'doctor_id' => $doctor->id,
                         'name' => $doctor->name,
                         'surname' => $doctor->surname,
-                        // 'phone' => $doctor->phone,
-                        // 'email' => $doctor->email,
                         'free_slots' => array_values($freeSlots),
-                        // 'first_free_slot' => $firstFreeSlot,
                     ];
                 }
             }
@@ -323,8 +385,6 @@ class ScheduleController extends Controller
 
         return response()->json($result);
     }
-
-
 
     public function getEndOptions(Request $request)
     {
@@ -440,6 +500,7 @@ class ScheduleController extends Controller
                     'doctor_name' => $visit->doctor->name,
                     'doctor_surname' => $visit->doctor->surname,
                     'user_name' => $visit->user->name,
+                    'user_type' => $visit->user->rodzaj_pacjenta,
                     'user_surname' => $visit->user->surname,
                     'phone' => $visit->user->phone,
                     'last_user_note' => $lastUserNote ? [
@@ -526,7 +587,6 @@ class ScheduleController extends Controller
             'message' => 'Zarezerwowano',
             // 'visit'   => $visit->load('user', 'doctor') // jeśli chcesz od razu usera i lekarza
         ], 201);
-
     }
     // public function reserve(NewVisitRequest $request)
     // {
@@ -681,6 +741,96 @@ class ScheduleController extends Controller
     //     ]);
     // }
 
+    // public function updateVisit(Request $request, $visitId)
+    // {
+    //     Log::info('Dane requestu przed walidacją:', $request->all());
+
+    //     // Walidacja
+    //     try {
+    //         $validated = $request->validate([
+    //             'date' => 'required|date',
+    //             'hour' => 'required|date_format:H:i',
+    //             'doctor_id' => 'required|exists:doctors,id',
+    //         ]);
+    //     } catch (\Illuminate\Validation\ValidationException $e) {
+    //         Log::error('Błąd walidacji:', $e->errors());
+    //         return response()->json([
+    //             'success' => false,
+    //             'errors' => $e->errors()
+    //         ], 422);
+    //     }
+
+    //     $visit = Visit::find($visitId);
+    //     if (!$visit) {
+    //         return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
+    //     }
+
+    //     // kopiujemy stare dane wizyty do maila
+    //     $oldVisit = clone $visit;
+
+    //     $newDoctorId = $validated['doctor_id'];
+    //     $newDateTime = Carbon::parse($validated['date'] . ' ' . $validated['hour']);
+
+    //     // 🔹 Zachowujemy długość starej wizyty
+    //     $oldDuration = Carbon::parse($visit->end_time)->diffInMinutes(Carbon::parse($visit->start_time));
+    //     $newEndTime = $newDateTime->copy()->addMinutes($oldDuration);
+
+    //     // Sprawdź czy nowy termin nie jest w przeszłości
+    //     if ($newDateTime->lt(Carbon::now())) {
+    //         return response()->json(['error' => 'Nie można ustawić wizyty w przeszłości'], 422);
+    //     }
+
+    //     // Sprawdź czy to nie weekend
+    //     if ($newDateTime->isWeekend()) {
+    //         return response()->json(['error' => 'Nie można ustawić wizyty w weekendy'], 422);
+    //     }
+
+    //     // Sprawdź czy lekarz nie ma urlopu w tym dniu i godzinach
+    //     $hasVacation = Vacation::where('doctor_id', $newDoctorId)
+    //         ->whereDate('start_date', '<=', $newDateTime->toDateString())
+    //         ->whereDate('end_date', '>=', $newDateTime->toDateString())
+    //         ->where(function ($q) use ($newDateTime, $newEndTime) {
+    //             $q->whereTime('start_time', '<', $newEndTime->format('H:i'))
+    //                 ->whereTime('end_time', '>', $newDateTime->format('H:i'));
+    //         })
+    //         ->exists();
+
+    //     if ($hasVacation) {
+    //         return response()->json(['error' => 'Lekarz jest na urlopie w tym czasie'], 422);
+    //     }
+
+    //     // Sprawdź czy slot jest wolny (pomijając obecną wizytę)
+    //     $exists = Visit::where('doctor_id', $newDoctorId)
+    //         ->whereDate('date', $validated['date'])
+    //         ->whereTime('start_time', '<', $newEndTime->format('H:i'))
+    //         ->whereTime('end_time', '>', $newDateTime->format('H:i'))
+    //         ->where('id', '!=', $visit->id)
+    //         ->exists();
+
+    //     if ($exists) {
+    //         return response()->json(['error' => 'Slot jest już zajęty'], 409);
+    //     }
+
+    //     // Aktualizacja wizyty
+    //     $visit->doctor_id = $newDoctorId;
+    //     $visit->date = $validated['date'];
+    //     $visit->start_time = $validated['hour'];
+    //     $visit->end_time = $newEndTime;
+    //     $visit->save();
+
+    //     Log::info('Wizyta zaktualizowana:', $visit->toArray());
+
+    //     // 🔹 Wyślij maila o zmianie terminu
+    //     Mail::to($visit->user->email)->send(new VisitRescheduledSimpleMail($oldVisit, $visit));
+
+    //     return response()->json([
+    //         'success' => true,
+    //         'message' => 'Wizyta zaktualizowana i wysłano powiadomienie e-mail',
+    //         'request' => $validated,
+    //         'visit' => $visit
+    //     ]);
+    // }
+
     public function updateVisit(Request $request, $visitId)
     {
         Log::info('Dane requestu przed walidacją:', $request->all());
@@ -691,6 +841,7 @@ class ScheduleController extends Controller
                 'date' => 'required|date',
                 'hour' => 'required|date_format:H:i',
                 'doctor_id' => 'required|exists:doctors,id',
+                'duration' => 'nullable|integer|min:1', // 🔹 opcjonalne
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::error('Błąd walidacji:', $e->errors());
@@ -711,9 +862,10 @@ class ScheduleController extends Controller
         $newDoctorId = $validated['doctor_id'];
         $newDateTime = Carbon::parse($validated['date'] . ' ' . $validated['hour']);
 
-        // 🔹 Zachowujemy długość starej wizyty
+        // 🔹 Używamy duration z request jeśli podane, inaczej długość starej wizyty
         $oldDuration = Carbon::parse($visit->end_time)->diffInMinutes(Carbon::parse($visit->start_time));
-        $newEndTime = $newDateTime->copy()->addMinutes($oldDuration);
+        $duration = $validated['duration'] ?? $oldDuration;
+        $newEndTime = $newDateTime->copy()->addMinutes($duration);
 
         // Sprawdź czy nowy termin nie jest w przeszłości
         if ($newDateTime->lt(Carbon::now())) {
@@ -766,11 +918,11 @@ class ScheduleController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Wizyta zaktualizowana i wysłano powiadomienie e-mail',
-            'request' => $validated,
+            // 'request' => $validated,
             'visit' => $visit
         ]);
-    }
 
+    }
     public function allUsers(Request $request)
     {
         $limit = $request->get('limit', 100);
@@ -977,5 +1129,41 @@ class ScheduleController extends Controller
             ],
             'token' => $token,
         ], 200);
+    }
+
+    public function showUser($id)
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            abort(404, 'User not found');
+        }
+
+        return response()->json($user);
+    }
+
+
+
+    public function showVisit($id)
+    {
+        $visit = Visit::find($id);
+
+        if (!$visit) {
+            abort(404, 'Visit not found');
+        }
+        $mappedVisit = [
+            'date' => Carbon::parse($visit->date)->format('d.m.Y'),
+            'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
+            'end_time' => Carbon::parse($visit->end_time)->format('H:i'),
+            // 'id'        => $visit->id,
+            'type'        => $visit->type,
+            'duration'        => $visit->duration,
+            // 'user_name' => $visit->user->name ?? null, // jeśli relacja z userem istnieje
+            // 'date'      => $visit->date,
+            // 'time'      => $visit->start_time . ' - ' . $visit->end_time,
+            'doctor'    => $visit->doctor_id,
+        ];
+
+        return response()->json($mappedVisit);
     }
 }

@@ -6,7 +6,11 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/available-days', [ScheduleController::class, 'getAvailableDays']);
 Route::post('/reserve', [ScheduleController::class, 'reserve']);
+Route::put('/visits-update/{visitId}', [ScheduleController::class, 'updateVisit']); //edycja danych wizyty
 Route::post('/doctor/login', [ScheduleController::class, 'loginDoctor']);
+Route::get('/users/{user}',  [ScheduleController::class, 'showUser']);
+Route::get('/visits/{visit}',  [ScheduleController::class, 'showVisit']);
+Route::delete('/schedule/visits/{id}', [ScheduleController::class, 'cancel']); // usuwanie wizyty
 
 
 Route::middleware('auth:sanctum')->group(
@@ -14,7 +18,7 @@ Route::middleware('auth:sanctum')->group(
         Route::prefix('schedule')->group(function () {
             Route::get('/all-visits', [ScheduleController::class, 'getAllVisits']);
             Route::get('/visits/{id}', [ScheduleController::class, 'getVisitById'])->middleware('auth:sanctum');
-            Route::delete('/visits/{id}', [ScheduleController::class, 'cancel']); // usuwanie wizyty
+            // Route::delete('/visits/{id}', [ScheduleController::class, 'cancel']); // usuwanie wizyty
         });
 
         Route::prefix('vacations')->group(function () {
