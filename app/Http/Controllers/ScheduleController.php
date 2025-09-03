@@ -22,6 +22,7 @@ use App\Mail\VisitCancelledMail;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use App\Mail\VisitRescheduledSimpleMail;
+use Illuminate\Support\Facades\DB;
 
 
 class ScheduleController extends Controller
@@ -488,12 +489,10 @@ class ScheduleController extends Controller
         $reservationStart = Carbon::parse($validated['date'] . ' ' . $validated['start_time']);
         $reservationEnd   = $reservationStart->copy()->addMinutes($validated['duration']);
 
-        // 🔹 Sprawdzamy, czy termin już minął
+        // 🔹 Sprawdzenia terminów
         if ($reservationEnd->lt(Carbon::now())) {
             return response()->json(['message' => 'Nie można rezerwować zakończonych terminów'], 422);
         }
-
-        // 🔹 Sprawdzamy weekend
         if ($reservationStart->isWeekend()) {
             return response()->json(['message' => 'Nie można rezerwować w weekendy'], 422);
         }
@@ -525,65 +524,56 @@ class ScheduleController extends Controller
 
         // 🔹 Obsługa użytkownika
         if (!empty($validated['email'])) {
-            // 🔹 Sprawdzamy, czy email już istnieje
-            $user = User::where('email', $validated['email'])->first();
-
-            if (!$user) {
-                // Email nie istnieje → tworzymy nowego użytkownika po telefonie
-                $user = User::firstOrNew(['phone' => $validated['phone'] ?? null]);
-                if (!$user->exists) {
-                    $user->password = bcrypt('password');
-                }
-            }
-
-            // 🔹 Aktualizujemy resztę danych
-            $user->name = $validated['name'];
-            $user->surname = $validated['surname'];
-            $user->phone = $validated['phone'] ?? $user->phone;
-            $user->opis = $validated['opis'] ?? $user->opis;
-            $user->wiek = $validated['wiek'] ?? $user->wiek;
-
-            // 🔹 Tworzymy wizytę w pamięci
-            $visit = new Visit([
-                'doctor_id'  => $request->doctor_id,
-                'type'       => $request->type,
-                'user_id'    => $user->id ?? 0, // dopiero po save
-                'date'       => $reservationStart->toDateString(),
-                'start_time' => $reservationStart->format('H:i'),
-                'end_time'   => $reservationEnd->format('H:i'),
-            ]);
-
-            // 🔹 Wysyłamy maila
+            // 🔹 Transakcja DB, mail jest warunkiem zapisu wizyty
             try {
-                Mail::to($validated['email'])->send(new VisitConfirmationMail($visit));
+                DB::transaction(function () use ($validated, $request, $reservationStart, $reservationEnd) {
 
-                // 🔹 Zapisujemy usera z emailem dopiero po udanym mailu
-                $user->email = $validated['email'];
-                $user->save();
+                    // Tworzymy / aktualizujemy usera
+                    $user = User::firstOrNew(['email' => $validated['email']]);
+                    if (!$user->exists) {
+                        $user->password = bcrypt('password');
+                    }
+                    $user->name = $validated['name'];
+                    $user->surname = $validated['surname'];
+                    $user->phone = $validated['phone'] ?? $user->phone;
+                    $user->opis = $validated['opis'] ?? $user->opis;
+                    $user->wiek = $validated['wiek'] ?? $user->wiek;
+                    $user->save();
 
-                // 🔹 Aktualizujemy user_id w wizycie
-                $visit->user_id = $user->id;
-                $visit->save();
+                    // Tworzymy wizytę
+                    $visit = Visit::create([
+                        'doctor_id'  => $request->doctor_id,
+                        'type'       => $request->type,
+                        'user_id'    => $user->id,
+                        'date'       => $reservationStart->toDateString(),
+                        'start_time' => $reservationStart->format('H:i'),
+                        'end_time'   => $reservationEnd->format('H:i'),
+                    ]);
+
+                    // Wysyłamy maila
+                    Mail::to($user->email)->send(new VisitConfirmationMail($visit->load('user', 'doctor')));
+                });
+
+                return response()->json(['message' => 'Zarezerwowano'], 201);
             } catch (\Exception $e) {
-                Log::warning("Nie udało się wysłać maila do {$validated['email']}: {$e->getMessage()}");
+                Log::error("Rezerwacja przerwana – problem z mailem: " . $e->getMessage());
                 return response()->json([
-                    'errors' => ['email' => ['Nie udało się wysłać maila, wizyta nie została utworzona']]
+                    'errors' => ['email' => ['Nie udało się wysłać maila – wizyta nie została utworzona']]
                 ], 422);
             }
         } else {
-            // 🔹 Brak emaila → zapisujemy usera od razu
+            // 🔹 Brak emaila → zapisujemy usera i wizytę normalnie
             $user = User::firstOrNew(['phone' => $validated['phone'] ?? null]);
+            if (!$user->exists) {
+                $user->password = bcrypt('password');
+            }
             $user->name = $validated['name'];
             $user->surname = $validated['surname'];
             $user->phone = $validated['phone'] ?? $user->phone;
             $user->opis = $validated['opis'] ?? $user->opis;
             $user->wiek = $validated['wiek'] ?? $user->wiek;
-            if (!$user->exists) {
-                $user->password = bcrypt('password');
-            }
             $user->save();
 
-            // 🔹 Tworzymy wizytę i zapisujemy od razu
             $visit = Visit::create([
                 'doctor_id'  => $request->doctor_id,
                 'type'       => $request->type,
@@ -592,12 +582,12 @@ class ScheduleController extends Controller
                 'start_time' => $reservationStart->format('H:i'),
                 'end_time'   => $reservationEnd->format('H:i'),
             ]);
-        }
 
-        return response()->json([
-            'message' => 'Zarezerwowano',
-            'visit'   => $visit->load('user', 'doctor')
-        ], 201);
+            return response()->json([
+                'message' => 'Zarezerwowano',
+                'visit'   => $visit->load('user', 'doctor')
+            ], 201);
+        }
     }
 
 
