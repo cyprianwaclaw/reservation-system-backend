@@ -17,7 +17,7 @@ Route::middleware('auth:sanctum')->group(
     function () {
         Route::prefix('schedule')->group(function () {
             Route::get('/all-visits', [ScheduleController::class, 'getAllVisits']);
-            Route::get('/visits/{id}', [ScheduleController::class, 'getVisitById'])->middleware('auth:sanctum');
+            Route::get('/visits/{id}', [ScheduleController::class, 'getVisitById']);
             // Route::delete('/visits/{id}', [ScheduleController::class, 'cancel']); // usuwanie wizyty
         });
 
@@ -33,7 +33,7 @@ Route::middleware('auth:sanctum')->group(
 
 
         Route::get('/allUsers', [ScheduleController::class, 'allUsers']);
-        Route::get('/users/{id}', [ScheduleController::class, 'userByID']);
+        Route::get('/all-users/{id}', [ScheduleController::class, 'userByID']);
         Route::patch('/update-patient/{id}', [ScheduleController::class, 'updateUserData']);
 
         Route::post('/add-patients', [ScheduleController::class, 'addPatient']);

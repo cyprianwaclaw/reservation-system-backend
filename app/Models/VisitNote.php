@@ -10,7 +10,8 @@ class VisitNote extends Model
         'visit_id',
         'note_date',
         'text',
-        'attachments'
+        'attachments',
+        'is_edit'
     ];
 
     protected $casts = [

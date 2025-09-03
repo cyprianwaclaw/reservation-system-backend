@@ -15,11 +15,16 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('surname');
-            $table->string('phone')->nullable();
-            $table->string('email')->unique();
+            $table->string('phone')->unique();
+            $table->string('email')->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
+
+            $table->string('city_code')->nullable();
+            $table->string('city')->nullable();
+            $table->string('street')->nullable();
+            $table->string('pesel')->nullable();
 
             $table->unsignedInteger('wiek')->nullable();
             $table->text('opis')->nullable();
@@ -29,6 +34,7 @@ return new class extends Migration
                 'AWF',
                 'WKS',
                 'Od Grzegorza',
+                'Od Asi',
                 'DK',
                 'DT'
             ])->nullable();

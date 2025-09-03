@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Hash;
 use App\Mail\VisitConfirmationMail;
 use App\Mail\VisitCancelledMail;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Validator;
 use App\Mail\VisitRescheduledSimpleMail;
 
 
@@ -154,6 +155,7 @@ class ScheduleController extends Controller
         $request->validate([
             'text' => 'nullable|string',
             'attachments.*' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240', // max 10MB
+            'is_edit' => 'nullable|boolean', // nowy parametr
         ]);
 
         $visit = Visit::find($visitId);
@@ -176,6 +178,7 @@ class ScheduleController extends Controller
             'note_date' => now(),
             'text' => $request->text,
             'attachments' => json_encode($attachments),
+            'is_edit' => $request->has('is_edit') ? (bool)$request->is_edit : false,
         ]);
 
         return response()->json([
@@ -183,6 +186,7 @@ class ScheduleController extends Controller
             'note' => $note,
         ]);
     }
+
 
     public function getVisitById($id)
     {
@@ -207,14 +211,33 @@ class ScheduleController extends Controller
                     'full_date' => "{$date}, {$start} - {$end}",
                 ];
             });
-        // 'visit_id' => $prevVisit->id,
-        // 'date' => Carbon::parse($prevVisit->date)->format('d.m.Y');
-        // 'start_time' => $prevVisit-> start_time->format('H:i'),
-        // 'end_time' => $prevVisit-> end_time->format('H:i'),
-        // 'doctor' => [
-        //     'name' => $prevVisit->doctor->name,
-        //     'surname' => $prevVisit->doctor->surname,
-        // ],
+
+        // Notatki zwykłe (is_edit = false)
+        $notes = $visit->notes
+            ->where('is_edit', false)
+            ->sortByDesc('created_at') // sortujemy malejąco po timestampie
+            ->values()
+            ->map(function ($note) {
+                return [
+                    'note_date' => $note->created_at->format('d.m.Y H:i'), // dokładny timestamp
+                    'text' => $note->text,
+                    'attachments' => $note->attachments,
+                ];
+            });
+
+        // Ostatnia notatka szybka (is_edit = true)
+        $fast_note_model = $visit->notes
+            ->where('is_edit', true)
+            ->sortBy('created_at') // rosnąco po czasie
+            ->last(); // bierze ostatnią (najpóźniejszą)
+
+        $fast_note = $fast_note_model
+            ? [
+                'note_date' => $fast_note_model->created_at->format('d.m.Y H:i'),
+                'text' => $fast_note_model->text,
+                // 'attachments' => $fast_note_model->attachments,
+            ]
+            : null;
 
         return response()->json([
             'current_visit' => [
@@ -224,10 +247,6 @@ class ScheduleController extends Controller
                 'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
                 'end_time' => Carbon::parse($visit->end_time)->format('H:i'),
             ],
-            // 'doctor' => [
-            //     'name' => $visit->doctor->name,
-            //     'surname' => $visit->doctor->surname,
-            // ],
             'user' => [
                 'id' => $visit->user->id,
                 'name' => $visit->user->name,
@@ -241,88 +260,12 @@ class ScheduleController extends Controller
             'date' => $visit->date,
             'start_time' => $visit->start_time,
             'end_time' => $visit->end_time,
-            'notes' => $visit->notes
-                ->sortByDesc('note_date')
-                ->values()
-                ->map(function ($note) {
-                    return [
-                        'note_date' => $note->note_date->format('d.m.Y'),
-                        'text' => $note->text,
-                        'attachments' => $note->attachments,
-                    ];
-                }),
-            // 'notes' => $visit->notes->map(function ($note) {
-            //     return [
-            //         'note_date' => $note->note_date->format('d.m.Y'),
-            //         'text' => $note->text,
-            //         'attachments' => $note->attachments,
-            //     ];
-            // }),
+            'notes' => $notes,
+            'fast_note' => $fast_note,
             'previous_visits' => $previousVisits,
         ]);
     }
 
-    // public function getAvailableDays(Request $request)
-    // {
-    //     $request->validate([
-    //         'start_date' => 'nullable|date',
-    //         'days_ahead' => 'nullable|integer|min:1|max:60',
-    //     ]);
-
-    //     $startDate = $request->start_date ? Carbon::parse($request->start_date) : Carbon::today();
-    //     $daysAhead = $request->days_ahead ?? 30;
-
-    //     $result = [];
-
-    //     for ($i = 0; $i < $daysAhead; $i++) {
-    //         $date = $startDate->copy()->addDays($i);
-
-    //         // Pomijamy weekendy
-    //         if ($date->isWeekend()) {
-    //             continue;
-    //         }
-
-    //         $availableDoctorsForDate = [];
-    //         $doctors = Doctor::all();
-
-    //         foreach ($doctors as $doctor) {
-    //             $freeSlots = $this->generateDailySlots($doctor->id, $date);
-
-    //             if ($date->isToday()) {
-    //                 $now = Carbon::now('Europe/Warsaw'); // teraz w lokalnej strefie
-    //                 $freeSlots = array_filter($freeSlots, function ($slot) use ($now, $date) {
-    //                     // łączenie daty slotu z lokalną strefą
-    //                     $slotTime = Carbon::createFromFormat('Y-m-d H:i', $date->toDateString() . ' ' . $slot, 'Europe/Warsaw');
-    //                     return $slotTime->greaterThan($now); // tylko sloty w przyszłości
-    //                 });
-    //             }
-
-    //             $now = Carbon::now()->setTimezone('Europe/Warsaw');
-    //             if (!empty($freeSlots)) {
-    //                 $firstFreeSlot = reset($freeSlots); // pierwszy wolny slot z przefiltrowanych
-
-    //                 $availableDoctorsForDate[] = [
-    //                     'doctor_id' => $doctor->id,
-    //                     'name' => $doctor->name,
-    //                     'surname' => $doctor->surname,
-    //                     // 'phone' => $doctor->phone,
-    //                     // 'email' => $doctor->email,
-    //                     'free_slots' => array_values($freeSlots),
-    //                     // 'first_free_slot' => $firstFreeSlot,
-    //                 ];
-    //             }
-    //         }
-
-    //         if (!empty($availableDoctorsForDate)) {
-    //             $result[] = [
-    //                 'date' => $date->toDateString(),
-    //                 'doctors' => $availableDoctorsForDate,
-    //             ];
-    //         }
-    //     }
-
-    //     return response()->json($result);
-    // }
 
     public function getAvailableDays(Request $request)
     {
@@ -488,38 +431,179 @@ class ScheduleController extends Controller
             ->whereBetween('date', [$startDateFormatted, $endDateFormatted])
             ->get();
 
-        $result = $visits->map(
-            function ($visit) {
-                $lastUserNote = $visit->user->notes()
-                    ->orderByDesc('note_date')
-                    ->first();
+        $result = $visits->map(function ($visit) {
 
-                return [
-                    'visit_id' => $visit->id,
-                    'doctor_id' => $visit->doctor->id,
-                    'doctor_name' => $visit->doctor->name,
-                    'doctor_surname' => $visit->doctor->surname,
-                    'user_name' => $visit->user->name,
-                    'user_type' => $visit->user->rodzaj_pacjenta,
-                    'user_surname' => $visit->user->surname,
-                    'phone' => $visit->user->phone,
-                    'last_user_note' => $lastUserNote ? [
-                        'note_date' => $lastUserNote->note_date->format('d.m.Y'),
+            // Ostatnia notatka użytkownika z is_edit = false (największy timestamp)
+            $lastUserNote = $visit->notes
+                ->where('is_edit', false)
+                ->sortByDesc('note_date') // sortujemy malejąco po timestampie
+                ->first();
+
+            // Pierwsza notatka użytkownika z is_edit = true (najmniejszy timestamp)
+            $firstFastNote = $visit->notes
+                ->where('is_edit', true)
+                ->sortBy('note_date')  // sortujemy rosnąco po timestampie
+                ->last();
+
+            return [
+                'visit_id' => $visit->id,
+                'doctor_id' => $visit->doctor->id,
+                'doctor_name' => $visit->doctor->name,
+                'doctor_surname' => $visit->doctor->surname,
+                'user_name' => $visit->user->name,
+                'user_type' => $visit->user->rodzaj_pacjenta,
+                'user_surname' => $visit->user->surname,
+                'phone' => $visit->user->phone,
+
+                'last_user_note' => $lastUserNote
+                    ? [
                         'text' => $lastUserNote->text,
+                        'note_date' => $lastUserNote->created_at->format('d.m.Y H:i'), // dokładny timestamp
                         'attachments' => $lastUserNote->attachments,
-                    ] : null,
-                    'date' => $visit->date,
-                    'start_time' => $visit->start_time,
-                    'end_time' => $visit->end_time,
-                ];
-            }
-        );
+                    ]
+                    : null,
+
+                'fast_note' => $firstFastNote
+                    ? [
+                        'text' => $firstFastNote->text,
+                        // 'note_date' => $firstFastNote->created_at->format('d.m.Y H:i'), // dokładny timestamp
+                        // 'attachments' => $firstFastNote->attachments,
+                    ]
+                    : null,
+
+                'date' => $visit->date,
+                'start_time' => $visit->start_time,
+                'end_time' => $visit->end_time,
+            ];
+        });
 
         return response()->json($result);
     }
 
 
     public function reserve(NewVisitRequest $request)
+    {
+        $validated = $request->validated();
+
+        $reservationStart = Carbon::parse($validated['date'] . ' ' . $validated['start_time']);
+        $reservationEnd   = $reservationStart->copy()->addMinutes($validated['duration']);
+
+        // 🔹 Sprawdzamy, czy termin już minął
+        if ($reservationEnd->lt(Carbon::now())) {
+            return response()->json(['message' => 'Nie można rezerwować zakończonych terminów'], 422);
+        }
+
+        // 🔹 Sprawdzamy weekend
+        if ($reservationStart->isWeekend()) {
+            return response()->json(['message' => 'Nie można rezerwować w weekendy'], 422);
+        }
+
+        // 🔹 Sprawdzamy urlopy lekarza
+        $hasVacation = Vacation::where('doctor_id', $request->doctor_id)
+            ->where(function ($q) use ($reservationStart, $reservationEnd) {
+                $q->whereRaw('TIMESTAMP(start_date, COALESCE(start_time, "00:00:00")) < ?', [$reservationEnd])
+                    ->whereRaw('TIMESTAMP(end_date, COALESCE(end_time, "23:59:59")) > ?', [$reservationStart]);
+            })->exists();
+
+        if ($hasVacation) {
+            return response()->json(['message' => 'Lekarz jest na urlopie w tym terminie'], 422);
+        }
+
+        // 🔹 Sprawdzamy kolizję wizyt
+        $exists = Visit::where('doctor_id', $request->doctor_id)
+            ->where('date', $reservationStart->toDateString())
+            ->where(function ($query) use ($reservationStart, $reservationEnd) {
+                $query->where('start_time', '<', $reservationEnd->format('H:i'))
+                    ->where('end_time', '>', $reservationStart->format('H:i'));
+            })->exists();
+
+        if ($exists) {
+            return response()->json([
+                'errors' => ['message' => ['Podany termin jest już zajęty']]
+            ], 409);
+        }
+
+        // 🔹 Obsługa użytkownika
+        if (!empty($validated['email'])) {
+            // 🔹 Sprawdzamy, czy email już istnieje
+            $user = User::where('email', $validated['email'])->first();
+
+            if (!$user) {
+                // Email nie istnieje → tworzymy nowego użytkownika po telefonie
+                $user = User::firstOrNew(['phone' => $validated['phone'] ?? null]);
+                if (!$user->exists) {
+                    $user->password = bcrypt('password');
+                }
+            }
+
+            // 🔹 Aktualizujemy resztę danych
+            $user->name = $validated['name'];
+            $user->surname = $validated['surname'];
+            $user->phone = $validated['phone'] ?? $user->phone;
+            $user->opis = $validated['opis'] ?? $user->opis;
+            $user->wiek = $validated['wiek'] ?? $user->wiek;
+
+            // 🔹 Tworzymy wizytę w pamięci
+            $visit = new Visit([
+                'doctor_id'  => $request->doctor_id,
+                'type'       => $request->type,
+                'user_id'    => $user->id ?? 0, // dopiero po save
+                'date'       => $reservationStart->toDateString(),
+                'start_time' => $reservationStart->format('H:i'),
+                'end_time'   => $reservationEnd->format('H:i'),
+            ]);
+
+            // 🔹 Wysyłamy maila
+            try {
+                Mail::to($validated['email'])->send(new VisitConfirmationMail($visit));
+
+                // 🔹 Zapisujemy usera z emailem dopiero po udanym mailu
+                $user->email = $validated['email'];
+                $user->save();
+
+                // 🔹 Aktualizujemy user_id w wizycie
+                $visit->user_id = $user->id;
+                $visit->save();
+            } catch (\Exception $e) {
+                Log::warning("Nie udało się wysłać maila do {$validated['email']}: {$e->getMessage()}");
+                return response()->json([
+                    'errors' => ['email' => ['Nie udało się wysłać maila, wizyta nie została utworzona']]
+                ], 422);
+            }
+        } else {
+            // 🔹 Brak emaila → zapisujemy usera od razu
+            $user = User::firstOrNew(['phone' => $validated['phone'] ?? null]);
+            $user->name = $validated['name'];
+            $user->surname = $validated['surname'];
+            $user->phone = $validated['phone'] ?? $user->phone;
+            $user->opis = $validated['opis'] ?? $user->opis;
+            $user->wiek = $validated['wiek'] ?? $user->wiek;
+            if (!$user->exists) {
+                $user->password = bcrypt('password');
+            }
+            $user->save();
+
+            // 🔹 Tworzymy wizytę i zapisujemy od razu
+            $visit = Visit::create([
+                'doctor_id'  => $request->doctor_id,
+                'type'       => $request->type,
+                'user_id'    => $user->id,
+                'date'       => $reservationStart->toDateString(),
+                'start_time' => $reservationStart->format('H:i'),
+                'end_time'   => $reservationEnd->format('H:i'),
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Zarezerwowano',
+            'visit'   => $visit->load('user', 'doctor')
+        ], 201);
+    }
+
+
+
+
+    public function reserveOld(NewVisitRequest $request)
     {
         $validated = $request->validated();
 
@@ -580,7 +664,16 @@ class ScheduleController extends Controller
         ]);
 
         // 🔹 Wyślij maila z potwierdzeniem
-        Mail::to($visit->user->email)->send(new VisitConfirmationMail($visit));
+        // 🔹 Wyślij maila tylko jeśli podano email
+        if (!empty($visit->user->email)) {
+            try {
+                Mail::to($visit->user->email)->send(new VisitConfirmationMail($visit));
+            } catch (\Exception $e) {
+                $validator = Validator::make([], []); // pusty validator
+                $validator->errors()->add('email', 'Podany adres e-mail jest błędny');
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+        }
 
         // 🔹 Zwracamy cały obiekt wizyty w odpowiedzi
         return response()->json([
@@ -588,6 +681,7 @@ class ScheduleController extends Controller
             // 'visit'   => $visit->load('user', 'doctor') // jeśli chcesz od razu usera i lekarza
         ], 201);
     }
+
     // public function reserve(NewVisitRequest $request)
     // {
 
@@ -961,31 +1055,10 @@ class ScheduleController extends Controller
     public function userByID($id)
     {
         $user = User::findOrFail($id);
-        // // Pobranie wizyt
-        // $visits = $user->visits()
-        //     ->get()
-        //     ->map(function ($visit) {
-        //         return [
-        //             // 'id'         => $visit->id,
-        //             // 'doctor_id'  => $visit->doctor_id,
-        //             // 'user_id'    => $visit->user_id,
-        //             'date'       => $visit->date,
-        //             'start_time' => $visit->start_time,
-        //             'end_time'   => $visit->end_time,
-        //             'created_at' => $visit->created_at,
-        //             'updated_at' => $visit->updated_at,
-        //             'doctor'     => $visit->doctor ? [
-        //                 'id'      => $visit->doctor->id,
-        //                 'name'    => $visit->doctor->name,
-        //                 // 'surname' => $visit->doctor->surname,
-        //                 // 'email'   => $visit->doctor->email
-        //             ] : null
-        //         ];
-        //     });
 
-        // Pobranie notatek (ręcznie mapujemy visit do notatki)
         $notes = $user->notes()
             ->get()
+            ->where('is_edit', false)
             // format('H:i')
             ->map(function ($note) {
                 $visit = $note->visit;
@@ -1023,6 +1096,10 @@ class ScheduleController extends Controller
             'surname' => $user->surname,
             'email'   => $user->email,
             'phone'   => $user->phone,
+            'pesel'   => $user->pesel,
+            'city'   => $user->city,
+            'city_code'   => $user->city_code,
+            'street'   => $user->street,
             'age'   => $user->age_with_suffix,
             'description'   => $user->opis,
             'patient_type'   => $user->rodzaj_pacjenta,
@@ -1055,6 +1132,10 @@ class ScheduleController extends Controller
             'wiek'    => $request->wiek,
             'opis'    => $request->opis,
             'rodzaj_pacjenta'    => $request->rodzaj_pacjenta,
+            'city_code' => $request->city_code,
+            'city' => $request->city,
+            'street' => $request->street,
+            'pesel' => $request->pesel,
         ]);
 
         if ($request->description) {

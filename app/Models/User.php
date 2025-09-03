@@ -18,6 +18,10 @@ class User extends Authenticatable
         'wiek',
         'opis',
         'rodzaj_pacjenta',
+        'city_code',
+        'city',
+        'street',
+        'pesel',
     ];
 
     protected $hidden = [
@@ -33,9 +37,13 @@ class User extends Authenticatable
     {
         return $this->hasManyThrough(VisitNote::class, Visit::class);
     }
-    public function getAgeWithSuffixAttribute(): string
+    public function getAgeWithSuffixAttribute(): ?string
     {
         $age = $this->wiek;
+
+        if (is_null($age)) {
+            return ''; // brak wieku → nic nie zwracamy
+        }
 
         if ($age === 1) {
             return $age . ' rok';

@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('visit_id')->constrained()->onDelete('cascade'); // powiązanie z wizytą
             $table->date('note_date');
             $table->text('text')->nullable();
+            $table->boolean('is_edit')->default(false);
             $table->json('attachments')->nullable(); // przechowujemy listę załączników w JSON
             $table->timestamps();
         });
