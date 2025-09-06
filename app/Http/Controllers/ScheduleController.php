@@ -391,7 +391,7 @@ class ScheduleController extends Controller
         ]);
 
         return response()->json([
-            'message'  => 'Wakacje dodane pomyślnie',
+            'message'  => 'Wakacje dodane',
             'vacation' => $vacation
         ], 201);
     }
@@ -997,15 +997,21 @@ class ScheduleController extends Controller
         Log::info('Wizyta zaktualizowana:', $visit->toArray());
 
         // 🔹 Wyślij maila o zmianie terminu
-        Mail::to($visit->user->email)->send(new VisitRescheduledSimpleMail($oldVisit, $visit));
+        // Mail::to($visit->user->email)->send(new VisitRescheduledSimpleMail($oldVisit, $visit));
+
+        if ($visit->user && !empty($visit->user->email)) {
+            Mail::to($visit->user->email)->send(new VisitRescheduledSimpleMail($oldVisit, $visit));
+            Log::info("Wysłano e-mail o zmianie wizyty do {$visit->user->email}");
+        } else {
+            Log::warning("Nie wysłano e-maila – brak adresu dla użytkownika ID: {$visit->user_id}");
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Wizyta zaktualizowana i wysłano powiadomienie e-mail',
+            'message' => 'Wizyta zaktualizowana',
             // 'request' => $validated,
             'visit' => $visit
         ]);
-
     }
     public function allUsers(Request $request)
     {
