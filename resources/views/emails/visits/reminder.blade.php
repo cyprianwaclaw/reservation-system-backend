@@ -252,7 +252,7 @@
                     📍 Gabinet znajduje się przy <strong>Zespół Krytych Pływalni AKF</strong> w Krakowie na al. Jana Pawła II 78, pietro -1<br>
                 </p>
                 <p class="info-text">
-                    Parking dostępny dla pacjentów przed budynkiem<br>
+                    Bezplatny parking Lidl lub M1. Pod basenem koszt 20zł, wjazd od ulicy Nowohuckiej<br>
                     Dojazd komunikacją miejską – przystanek <strong>AKF/PK</strong><br>
                 </p>
                 <p class="info-text">
