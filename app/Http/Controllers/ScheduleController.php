@@ -23,111 +23,189 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use App\Mail\VisitRescheduledSimpleMail;
 use Illuminate\Support\Facades\DB;
-
+use App\Models\DoctorWorkingHour;
 
 class ScheduleController extends Controller
 {
 
-    private function generateDailySlots(int $doctorId, Carbon $date)
-    {
-        // Godziny pracy
-        $workStart = Carbon::parse($date->toDateString() . ' 7:30');
-        $workEnd = Carbon::parse($date->toDateString() . ' 21:00');
+    // private function generateDailySlots(int $doctorId, Carbon $date)
+    // {
 
-        // Pobierz przerwy/wakacje
+    //     $dayOfWeek = $date->dayOfWeekIso; // 1=poniedziałek, 7=niedziela
+    //     $workingHour = DoctorWorkingHour::where('doctor_id', $doctorId)
+    //         ->where('day_of_week', $dayOfWeek)
+    //         ->first();
+
+    //     if ($workingHour) {
+    //         $workStart = Carbon::parse($date->toDateString() . ' ' . $workingHour->start_time);
+    //         $workEnd = Carbon::parse($date->toDateString() . ' ' . $workingHour->end_time);
+    //     } else {
+    //         $workStart = Carbon::parse($date->toDateString() . ' 7:30');
+    //         $workEnd = Carbon::parse($date->toDateString() . ' 21:00');
+    //     }
+
+
+    //         // Godziny pracy
+    //         $workStart = Carbon::parse($date->toDateString() . ' 7:30');
+    //     $workEnd = Carbon::parse($date->toDateString() . ' 21:00');
+
+    //     // Pobierz przerwy/wakacje
+    //     $vacations = Vacation::where('doctor_id', $doctorId)
+    //         ->whereDate('start_date', '<=', $date)
+    //         ->whereDate('end_date', '>=', $date)
+    //         ->get();
+
+    //     $blockedPeriods = [];
+    //     foreach ($vacations as $vacation) {
+    //         if ($vacation->start_time && $vacation->end_time) {
+    //             $blockedPeriods[] = [
+    //                 'start' => Carbon::parse($date->toDateString() . ' ' . $vacation->start_time),
+    //                 'end' => Carbon::parse($date->toDateString() . ' ' . $vacation->end_time),
+    //             ];
+    //         }
+    //     }
+
+    //     $current = $workStart->copy();
+    //     $slots = [];
+
+    //     while ($current->lt($workEnd)) {
+    //         $slotEnd = $current->copy()->addMinutes(45);
+
+    //         // Slot nie może wychodzić poza godziny pracy
+    //         if ($slotEnd->gt($workEnd)) {
+    //             break;
+    //         }
+
+    //         // Sprawdź kolizję z przerwami/wakacjami
+    //         $isBlocked = false;
+    //         foreach ($blockedPeriods as $period) {
+    //             if ($slotEnd->gt($period['start']) && $current->lt($period['end'])) {
+    //                 $isBlocked = true;
+    //                 break;
+    //             }
+    //         }
+
+    //         // Sprawdź kolizję z istniejącymi wizytami
+    //         // $isReserved = Visit::where('doctor_id', $doctorId)
+    //         //     ->whereDate('date', $date)
+    //         //     ->where(function ($q) use ($current, $slotEnd) {
+    //         //         $q->whereBetween('start_time', [$current->format('H:i'), $slotEnd->format('H:i')])
+    //         //           ->orWhereBetween('end_time', [$current->format('H:i'), $slotEnd->format('H:i')]);
+    //         //     })
+    //         //     ->exists();
+
+    //         $isReserved = Visit::where('doctor_id', $doctorId)
+    //             ->whereDate('date', $date->toDateString())
+    //             ->where('start_time', '<', $slotEnd->format('H:i'))
+    //             ->where('end_time',   '>', $current->format('H:i'))
+    //             ->exists();
+
+    //         if (!$isBlocked && !$isReserved) {
+    //             $slots[] = $current->format('H:i');
+    //         }
+
+    //         // Przejdź do następnego slotu
+    //         $current->addMinutes(45);
+    //     }
+
+    //     return $slots;
+    // }}
+
+    private function generateDailySlots(int $doctorId, Carbon $date, int $slotLengthMinutes = 45): array
+    {
+        $dayOfWeek = $date->dayOfWeekIso; // 1 = poniedziałek, 7 = niedziela
+
+        // Pobierz grafik dla danego lekarza i dnia tygodnia
+        $workingHour = DoctorWorkingHour::where('doctor_id', $doctorId)
+            ->where('day_of_week', $dayOfWeek)
+            ->first();
+
+        if (!$workingHour) {
+            // Jeśli lekarz nie pracuje tego dnia – zwróć pustą tablicę
+            return [];
+        }
+
+        $workStart = Carbon::parse("{$date->toDateString()} {$workingHour->start_time}");
+        $workEnd   = Carbon::parse("{$date->toDateString()} {$workingHour->end_time}");
+
+        // Pobierz przerwy/wakacje dla tego dnia
         $vacations = Vacation::where('doctor_id', $doctorId)
             ->whereDate('start_date', '<=', $date)
             ->whereDate('end_date', '>=', $date)
             ->get();
 
-        $blockedPeriods = [];
-        foreach ($vacations as $vacation) {
+        $blockedPeriods = collect($vacations)->map(function ($vacation) use ($date) {
             if ($vacation->start_time && $vacation->end_time) {
-                $blockedPeriods[] = [
-                    'start' => Carbon::parse($date->toDateString() . ' ' . $vacation->start_time),
-                    'end' => Carbon::parse($date->toDateString() . ' ' . $vacation->end_time),
+                return [
+                    'start' => Carbon::parse("{$date->toDateString()} {$vacation->start_time}"),
+                    'end'   => Carbon::parse("{$date->toDateString()} {$vacation->end_time}"),
                 ];
             }
-        }
+            return null;
+        })->filter()->values();
 
-        $current = $workStart->copy();
         $slots = [];
+        $current = $workStart->copy();
 
         while ($current->lt($workEnd)) {
-            $slotEnd = $current->copy()->addMinutes(45);
+            $slotEnd = $current->copy()->addMinutes($slotLengthMinutes);
 
-            // Slot nie może wychodzić poza godziny pracy
             if ($slotEnd->gt($workEnd)) {
                 break;
             }
 
-            // Sprawdź kolizję z przerwami/wakacjami
-            $isBlocked = false;
-            foreach ($blockedPeriods as $period) {
-                if ($slotEnd->gt($period['start']) && $current->lt($period['end'])) {
-                    $isBlocked = true;
-                    break;
-                }
-            }
-
-            // Sprawdź kolizję z istniejącymi wizytami
-            // $isReserved = Visit::where('doctor_id', $doctorId)
-            //     ->whereDate('date', $date)
-            //     ->where(function ($q) use ($current, $slotEnd) {
-            //         $q->whereBetween('start_time', [$current->format('H:i'), $slotEnd->format('H:i')])
-            //           ->orWhereBetween('end_time', [$current->format('H:i'), $slotEnd->format('H:i')]);
-            //     })
-            //     ->exists();
+            $isBlocked = $blockedPeriods->contains(function ($period) use ($current, $slotEnd) {
+                return $slotEnd->gt($period['start']) && $current->lt($period['end']);
+            });
 
             $isReserved = Visit::where('doctor_id', $doctorId)
                 ->whereDate('date', $date->toDateString())
                 ->where('start_time', '<', $slotEnd->format('H:i'))
-                ->where('end_time',   '>', $current->format('H:i'))
+                ->where('end_time', '>', $current->format('H:i'))
                 ->exists();
 
             if (!$isBlocked && !$isReserved) {
                 $slots[] = $current->format('H:i');
             }
 
-            // Przejdź do następnego slotu
-            $current->addMinutes(45);
+            $current->addMinutes($slotLengthMinutes);
         }
 
         return $slots;
     }
 
-    private function generateDailySlotsOLD($doctorId, Carbon $date)
-    {
-        $schedule = Schedule::where('doctor_id', $doctorId)
-            ->whereDate('date', $date)
-            ->first();
+    // private function generateDailySlotsOLD($doctorId, Carbon $date)
+    // {
+    //     $schedule = Schedule::where('doctor_id', $doctorId)
+    //         ->whereDate('date', $date)
+    //         ->first();
 
-        if ($schedule) {
-            $start = Carbon::parse($schedule->start_time);
-            $end = Carbon::parse($schedule->end_time)->subHour();
-        } else {
-            $start = $date->copy()->setTime(8, 0);
-            $end = $date->copy()->setTime(19, 0); // subHour, bo slot trwa 1h
-        }
+    //     if ($schedule) {
+    //         $start = Carbon::parse($schedule->start_time);
+    //         $end = Carbon::parse($schedule->end_time)->subHour();
+    //     } else {
+    //         $start = $date->copy()->setTime(8, 0);
+    //         $end = $date->copy()->setTime(19, 0); // subHour, bo slot trwa 1h
+    //     }
 
-        $hours = [];
-        $period = CarbonPeriod::create($start, '1 hour', $end);
+    //     $hours = [];
+    //     $period = CarbonPeriod::create($start, '1 hour', $end);
 
-        foreach ($period as $hour) {
-            $hourStr = $hour->format('H:i');
+    //     foreach ($period as $hour) {
+    //         $hourStr = $hour->format('H:i');
 
-            $isReserved = Visit::where('doctor_id', $doctorId)
-                ->whereDate('date', $date)
-                ->whereTime('start_time', $hourStr)
-                ->exists();
+    //         $isReserved = Visit::where('doctor_id', $doctorId)
+    //             ->whereDate('date', $date)
+    //             ->whereTime('start_time', $hourStr)
+    //             ->exists();
 
-            if (!$isReserved) {
-                $hours[] = $hourStr;
-            }
-        }
+    //         if (!$isReserved) {
+    //             $hours[] = $hourStr;
+    //         }
+    //     }
 
-        return $hours;
-    }
+    //     return $hours;
+    // }
 
 
 
@@ -276,7 +354,7 @@ class ScheduleController extends Controller
         ]);
 
         $startDate = $request->start_date ? Carbon::parse($request->start_date) : Carbon::today();
-        $daysAhead = $request->days_ahead ?? 30;
+        $daysAhead = $request->days_ahead ?? 50;
 
         // 🔐 Sprawdzenie czy jest token Bearer
         $authHeader = $request->header('Authorization');
@@ -670,6 +748,31 @@ class ScheduleController extends Controller
             'message' => 'Zarezerwowano',
             // 'visit'   => $visit->load('user', 'doctor') // jeśli chcesz od razu usera i lekarza
         ], 201);
+    }
+
+
+    public function setDoctorWorkingHours(Request $request)
+    {
+        $request->validate([
+            'doctor_id' => 'required|exists:doctors,id',
+            'working_hours' => 'required|array',
+            'working_hours.*.day_of_week' => 'required|integer|min:1|max:7',
+            'working_hours.*.start_time' => 'required|date_format:H:i',
+            'working_hours.*.end_time' => 'required|date_format:H:i|after:working_hours.*.start_time',
+        ]);
+        foreach ($request->working_hours as $wh) {
+            DoctorWorkingHour::updateOrCreate(
+                [
+                    'doctor_id' => $request->doctor_id,
+                    'day_of_week' => $wh['day_of_week'],
+                ],
+                [
+                    'start_time' => $wh['start_time'],
+                    'end_time' => $wh['end_time'],
+                ]
+            );
+        }
+        return response()->json(['message' => 'Grafik pracy lekarza zapisany']);
     }
 
     // public function reserve(NewVisitRequest $request)
@@ -1172,8 +1275,10 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Nie znaleziono rezerwacji'], 404);
         }
 
-        // Wyślij mail zanim usuniemy wizytę
-        Mail::to($visit->user->email)->send(new VisitCancelledMail($visit));
+        // Wyślij mail tylko jeśli user ma email
+        if ($visit->user && !empty($visit->user->email)) {
+            Mail::to($visit->user->email)->send(new VisitCancelledMail($visit));
+        }
 
         $visit->delete();
 
@@ -1242,5 +1347,181 @@ class ScheduleController extends Controller
         ];
 
         return response()->json($mappedVisit);
+    }
+
+    // public function getDoctorWorkingHours(Request $request)
+    // {
+    //     $allWorkHour = DoctorWorkingHour::select('doctor_id', 'day_of_week', 'start_time', 'end_time')
+    //         ->orderBy('doctor_id')
+    //         ->orderBy('day_of_week')
+    //         ->get()
+    //         ->groupBy('doctor_id');
+
+    //     $result = $allWorkHour->map(function ($hours, $doctorId) {
+    //         return $hours->map(function ($hour) {
+    //             return [
+    //                 'day_of_week' => $hour->day_of_week,
+    //                 'start_time'  => Carbon::parse($hour->start_time)->format('H:i'),
+    //                 'end_time'    => Carbon::parse($hour->end_time)->format('H:i'),
+    //             ];
+    //         })->values();
+    //     });
+
+    //     return response()->json($result);
+    // }
+
+    public function getDoctorWorkingHours()
+    {
+        $hours = DoctorWorkingHour::with('doctor')->get();
+
+        $daysMap = [
+            1 => 'Poniedziałek',
+            2 => 'Wtorek',
+            3 => 'Środa',
+            4 => 'Czwartek',
+            5 => 'Piątek',
+            // 6 => 'Sobota',
+            // 7 => 'Niedziela',
+        ];
+
+        $grouped = [];
+
+        foreach ($hours as $hour) {
+            $doctorId   = $hour->doctor->id;
+            $doctorName = "{$hour->doctor->name} {$hour->doctor->surname}";
+
+            // Jeśli tego lekarza jeszcze nie ma w grupie – dodaj pustą strukturę
+            if (!isset($grouped[$doctorId])) {
+                $grouped[$doctorId] = [
+                    'doctor_id'   => $doctorId,
+                    'doctor_name' => $doctorName,
+                    'hours'       => [],
+                ];
+            }
+
+            $grouped[$doctorId]['hours'][] = [
+                'day'        => $daysMap[$hour->day_of_week] ?? $hour->day_of_week,
+                'start_time' => \Carbon\Carbon::parse($hour->start_time)->format('H:i'),
+                'end_time'   => \Carbon\Carbon::parse($hour->end_time)->format('H:i'),
+            ];
+        }
+
+        // Posortuj po ID lekarza (opcjonalnie)
+        ksort($grouped);
+
+        // Zwróć posortowane wartości jako tablicę indeksowaną
+        return response()->json(array_values($grouped));
+    }
+    
+    public function getFullyAvailableDaysForDoctor(Request $request)
+    {
+        $request->validate([
+            'doctor_id' => 'required|exists:doctors,id',
+            'start_date' => 'nullable|date',
+            'days_ahead' => 'nullable|integer|min:1|max:60',
+        ]);
+
+        $doctorId = $request->input('doctor_id');
+        $startDate = $request->input('start_date') ? Carbon::parse($request->input('start_date')) : Carbon::today();
+        $daysAhead = $request->input('days_ahead') ?? 20; // domyślnie 20 dni
+
+        $result = [];
+        $doctor = Doctor::findOrFail($doctorId);
+
+        for ($i = 0; $i < $daysAhead; $i++) {
+            $date = $startDate->copy()->addDays($i);
+
+            // Pomijamy weekendy
+            if ($date->isWeekend()) {
+                continue;
+            }
+
+            // Generujemy wszystkie możliwe sloty dnia (bez uwzględnienia wizyt/przerw)
+            $workStart = Carbon::parse($date->toDateString() . ' 7:30');
+            $workEnd = Carbon::parse($date->toDateString() . ' 21:00');
+            $allSlots = [];
+            $current = $workStart->copy();
+            while ($current->lt($workEnd)) {
+                $slotEnd = $current->copy()->addMinutes(45);
+                if ($slotEnd->gt($workEnd)) break;
+                $allSlots[] = $current->format('H:i');
+                $current->addMinutes(45);
+            }
+
+            // Pobieramy wolne sloty dnia
+            $freeSlots = $this->generateDailySlots($doctor->id, $date);
+
+            // Upewniamy się, że format jest taki sam
+            $freeSlots = array_map(fn($s) => Carbon::parse($s)->format('H:i'), $freeSlots);
+
+            // Jeśli wszystkie sloty są wolne, dodajemy dzień do wyniku
+            if (!empty($allSlots) && count(array_intersect($allSlots, $freeSlots)) === count($allSlots)) {
+                $result[] = [
+                    'value' => $date->toDateString(),
+                    'label' => $date->format('d.m.Y'),
+                ];
+            }
+        }
+
+        return response()->json($result);
+    }
+
+public function updateDoctorWorkingHours(Request $request, $doctorId)
+{
+    // Sprawdzamy, czy tablica hours istnieje
+    $request->validate([
+        'hours' => 'required|array',
+        'hours.*.start_time' => 'required|date_format:H:i',
+        'hours.*.end_time' => 'required|date_format:H:i|after:start_time',
+        'hours.*.day' => 'required|string',
+    ]);
+
+    $daysMap = [
+        'Poniedziałek' => 1,
+        'Wtorek' => 2,
+        'Środa' => 3,
+        'Czwartek' => 4,
+        'Piątek' => 5,
+        'Sobota' => 6,
+        'Niedziela' => 7,
+    ];
+
+    $hours = $request->input('hours');
+
+    foreach ($hours as $hour) {
+        // zamiana nazwy dnia na numer
+        $dayNumber = $daysMap[$hour['day']] ?? null;
+        if (!$dayNumber) continue; // jeśli dzień niepoprawny, pomijamy
+
+        // Szukamy istniejącego rekordu po doctor_id i day_of_week
+        $workingHour = \App\Models\DoctorWorkingHour::where('doctor_id', $doctorId)
+            ->where('day_of_week', $dayNumber)
+            ->first();
+
+        if ($workingHour) {
+            // Aktualizacja
+            $workingHour->update([
+                'start_time' => $hour['start_time'],
+                'end_time' => $hour['end_time'],
+            ]);
+        } else {
+            // Tworzymy nowy rekord
+            DoctorWorkingHour::create([
+                'doctor_id' => $doctorId,
+                'day_of_week' => $dayNumber,
+                'start_time' => $hour['start_time'],
+                'end_time' => $hour['end_time'],
+            ]);
+        }
+    }
+
+    return response()->json(['message' => 'Godziny pracy zaktualizowane']);
+}
+
+    public function deleteDoctorWorkingHour($id)
+    {
+        $workingHour = \App\Models\DoctorWorkingHour::findOrFail($id);
+        $workingHour->delete();
+        return response()->json(['message' => 'Godziny pracy usunięte']);
     }
 }

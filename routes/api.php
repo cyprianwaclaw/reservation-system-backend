@@ -18,7 +18,7 @@ Route::middleware('auth:sanctum')->group(
         Route::prefix('schedule')->group(function () {
             Route::get('/all-visits', [ScheduleController::class, 'getAllVisits']);
             Route::get('/visits/{id}', [ScheduleController::class, 'getVisitById']);
-            // Route::delete('/visits/{id}', [ScheduleController::class, 'cancel']); // usuwanie wizyty
+            Route::delete('/visits/{id}', [ScheduleController::class, 'cancel']); // usuwanie wizyty
         });
 
         Route::prefix('vacations')->group(function () {
@@ -45,5 +45,10 @@ Route::middleware('auth:sanctum')->group(
         Route::post('/fully-available-days', [ScheduleController::class, 'getFullyAvailableDaysForDoctor']);
 
         Route::delete('/patient-delete/{id}', [ScheduleController::class, 'deletePatient']);
+
+        Route::post('/doctor/set-working-hours', [ScheduleController::class, 'setDoctorWorkingHours']);
+        Route::get('/doctor/working-hours', [ScheduleController::class, 'getDoctorWorkingHours']);
+        Route::put('/doctor/{id}/working-hours', [ScheduleController::class, 'updateDoctorWorkingHours']);
+        Route::delete('/doctor/working-hours/{id}', [ScheduleController::class, 'deleteDoctorWorkingHour']);
     }
 );

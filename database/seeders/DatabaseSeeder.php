@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Doctor;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class DatabaseSeeder extends Seeder
 {
@@ -13,7 +14,15 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Wyczyść tabelę doctors, aby uniknąć duplikatów
+        DB::table('doctors')->truncate();
 
+        // Seeder godzin pracy lekarzy
+        $this->call([
+            DoctorWorkingHourSeeder::class,
+        ]);
+
+        // Dodaj lekarzy
         Doctor::create([
             'name' => 'Michał',
             'surname' => 'Kaczmarek',
