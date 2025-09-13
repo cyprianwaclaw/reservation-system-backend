@@ -14,42 +14,16 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Wyczyść tabelę doctors, aby uniknąć duplikatów
-        DB::table('doctors')->truncate();
 
-        // Seeder godzin pracy lekarzy
+        // Najpierw lekarze
+        $this->call([
+            DoctorSeeder::class,
+        ]);
+
+        // Następnie godziny pracy lekarzy
         $this->call([
             DoctorWorkingHourSeeder::class,
         ]);
 
-        // Dodaj lekarzy
-        Doctor::create([
-            'name' => 'Michał',
-            'surname' => 'Kaczmarek',
-            'phone' => '123456789',
-            'email' => 'test@test.pl',
-            'password' => bcrypt('haslo123'),
-        ]);
-        Doctor::create([
-            'name' => 'Grzegorz',
-            'surname' => 'Roczniak',
-            'phone' => '123456789',
-            'email' => 'test1@test.pl',
-            'password' => bcrypt('haslo123'),
-        ]);
-        Doctor::create([
-            'name' => 'Ola',
-            'surname' => 'Test',
-            'phone' => '123456789',
-            'email' => 'test3@test.pl',
-            'password' => bcrypt('haslo123'),
-        ]);
-        Doctor::create([
-            'name' => 'Asia',
-            'surname' => 'Jachym-Drewniak',
-            'phone' => '123456789',
-            'email' => 'test2@test.pl',
-            'password' => bcrypt('haslo123'),
-        ]);
     }
 }
