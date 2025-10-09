@@ -274,7 +274,7 @@ class ScheduleController extends Controller
         if (!$visit) {
             return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
         }
-
+        $user = $visit->user;
         // Pobranie wszystkich poprzednich wizyt pacjenta (po dacie)
         $previousVisits = Visit::with('doctor')
             ->where('user_id', $visit->user_id)
@@ -291,18 +291,52 @@ class ScheduleController extends Controller
                 ];
             });
 
-        // Notatki zwykłe (is_edit = false)
-        $notes = $visit->notes
+
+        $notes = $user->notes()
+            ->get()
             ->where('is_edit', false)
-            ->sortByDesc('created_at') // sortujemy malejąco po timestampie
-            ->values()
+            // format('H:i')
             ->map(function ($note) {
+                $visit = $note->visit;
                 return [
-                    'note_date' => $note->created_at->format('d.m.Y H:i'), // dokładny timestamp
-                    'text' => $note->text,
+                    // 'id'         => $note->id,
+                    // 'visit_id'   => $note->visit_id,
+                    // 'note_date'  =>  Carbon::parse($note->note_date)->format('d.m.Y'),
+                    'text'       => $note->text,
                     'attachments' => $note->attachments,
+                    // 'created_at' => $note->created_at,
+                    // 'updated_at' => $note->updated_at,
+                    'visit_details'      => $visit ? [
+                        // 'id'         => $visit->id,
+                        // 'doctor_id'  => $visit->doctor_id,
+                        // 'user_id'    => $visit->user_id,
+                        'date' => Carbon::parse($visit->date)->format('d.m.Y'),
+                        'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
+                        'end_time'   => Carbon::parse($visit->end_time)->format('H:i'),
+                        // 'created_at' => $visit->created_at,
+                        // 'updated_at' => $visit->updated_at,
+                        'doctor'     => $visit->doctor ? [
+                            // 'id'      => $visit->doctor->id,
+                            'name'    => $visit->doctor->name,
+                            'surname' => $visit->doctor->surname,
+                            // 'email'   => $visit->doctor->email
+                        ] : null
+                    ] : null
                 ];
             });
+
+        // Notatki zwykłe (is_edit = false)
+        // $notes = $visit->notes
+        //     ->where('is_edit', false)
+        //     ->sortByDesc('created_at') // sortujemy malejąco po timestampie
+        //     ->values()
+        //     ->map(function ($note) {
+        //         return [
+        //             'note_date' => $note->created_at->format('d.m.Y H:i'), // dokładny timestamp
+        //             'text' => $note->text,
+        //             'attachments' => $note->attachments,
+        //         ];
+        //     });
 
         // Ostatnia notatka szybka (is_edit = true)
         $fast_note_model = $visit->notes
