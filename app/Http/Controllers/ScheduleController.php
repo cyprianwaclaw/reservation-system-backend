@@ -341,7 +341,7 @@ class ScheduleController extends Controller
             'end_time' => $visit->end_time,
             'notes' => $notes,
             'fast_note' => $fast_note,
-            'previous_visits' => $previousVisits,
+            // 'previous_visits' => $previousVisits,
         ]);
     }
 
@@ -1412,7 +1412,7 @@ class ScheduleController extends Controller
         // Zwróć posortowane wartości jako tablicę indeksowaną
         return response()->json(array_values($grouped));
     }
-    
+
     public function getFullyAvailableDaysForDoctor(Request $request)
     {
         $request->validate([
