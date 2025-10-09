@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "167c84860eaaa57800b694c3a8a6902f",
+    "content-hash": "57bf9e5b2c56f48d2f4ff250419d3394",
     "packages": [
         {
             "name": "brick/math",
@@ -3335,6 +3335,73 @@
                 "source": "https://github.com/ramsey/uuid/tree/4.9.0"
             },
             "time": "2025-06-25T14:20:11+00:00"
+        },
+        {
+            "name": "smsapi/php-client",
+            "version": "v3.0.12",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/smsapi/smsapi-php-client.git",
+                "reference": "b4305a817083a43a58affa2502f47fee78602bfb"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/smsapi/smsapi-php-client/zipball/b4305a817083a43a58affa2502f47fee78602bfb",
+                "reference": "b4305a817083a43a58affa2502f47fee78602bfb",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "php": "^7 || ~8.0 || ~8.1 || ~8.2 || ~8.3 || ~8.4",
+                "psr/http-client": "^1",
+                "psr/http-factory": "^1",
+                "psr/http-message": "~1.0 || ~1.1 || ~2.0",
+                "psr/log": "^1 || ^2 || ^3"
+            },
+            "require-dev": {
+                "doctrine/instantiator": "1.0.5 || ^1.4.0",
+                "ext-curl": "*",
+                "ext-mbstring": "*",
+                "guzzlehttp/psr7": "^1 || ^2",
+                "phpdocumentor/reflection-docblock": "^4.3 || ^5.2.0",
+                "phpdocumentor/type-resolver": "^0.5 || ^1.3.0",
+                "phpspec/prophecy": "^1.7",
+                "phpunit/phpunit": "^6 || ~8.5",
+                "roave/security-advisories": "dev-latest",
+                "symfony/yaml": "^3"
+            },
+            "suggest": {
+                "ext-curl": "To use Curl HttpClient",
+                "guzzlehttp/psr7": "To use Curl HttpClient and HTTP message factories"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Smsapi\\Client\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "Apache-2.0"
+            ],
+            "description": "SMSAPI API PHP Client",
+            "homepage": "https://github.com/smsapi/smsapi-php-client",
+            "keywords": [
+                "api client",
+                "hlr",
+                "mms",
+                "sms",
+                "smsapi",
+                "smsapi.com",
+                "smsapi.pl",
+                "url shortener",
+                "vms"
+            ],
+            "support": {
+                "issues": "https://github.com/smsapi/smsapi-php-client/issues",
+                "source": "https://github.com/smsapi/smsapi-php-client/tree/v3.0.12"
+            },
+            "time": "2025-07-03T11:47:02+00:00"
         },
         {
             "name": "symfony/clock",

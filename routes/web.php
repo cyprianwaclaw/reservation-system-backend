@@ -7,6 +7,7 @@ use App\Mail\VisitConfirmationMail;
 use App\Mail\VisitCancelledMail;
 use App\Models\Visit;
 use App\Mail\VisitRescheduledSimpleMail;
+use App\Http\Controllers\SmsController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -15,6 +16,9 @@ Route::get('/run-reminders', function () {
     Artisan::call('visits:check-tomorrow');
     return 'Scheduler executed';
 });
+
+Route::get('/send-sms', [SmsController::class, 'sendSms']);
+
 Route::get('/remainder-mail', function () {
     $visit = Visit::find(2); // przykładowa wizyta
     return new VisitReminderMail($visit);
