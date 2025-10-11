@@ -268,107 +268,121 @@ class ScheduleController extends Controller
 
     public function getVisitById($id)
     {
-        // Jedno mega-query
-        $data = DB::table('visits')
-            ->leftJoin('users', 'visits.user_id', '=', 'users.id')
-            ->leftJoin('doctors', 'visits.doctor_id', '=', 'doctors.id')
-            ->leftJoin('visit_notes', 'visit_notes.visit_id', '=', 'visits.id')
-            ->where('visits.id', $id)
-            ->select(
-                'visits.id as visit_id',
-                'visits.type as visit_type',
-                'visits.date as visit_date',
-                'visits.start_time',
-                'visits.end_time',
-                'users.id as user_id',
-                'users.name as user_name',
-                'users.surname as user_surname',
-                'users.email as user_email',
-                'users.phone as user_phone',
-                'users.age_with_suffix as user_age',
-                'users.opis as user_description',
-                'users.rodzaj_pacjenta as user_type',
-                'doctors.name as doctor_name',
-                'doctors.surname as doctor_surname',
-                'visit_notes.id as note_id',
-                'visit_notes.text as note_text',
-                'visit_notes.attachments as note_attachments',
-                'visit_notes.is_edit as note_is_edit',
-                'visit_notes.created_at as note_created_at',
-                'visit_notes.note_date as note_date'
-            )
-            ->orderBy('visit_notes.created_at')
-            ->get();
+        // Pobranie wizyty z notatkami i ostatnimi 5 poprzednimi wizytami w jednym query
+        $result = DB::table('visits as v')
+            ->leftJoin('users as u', 'v.user_id', '=', 'u.id')
+            ->leftJoin('doctors as d', 'v.doctor_id', '=', 'd.id')
+            ->leftJoin('visit_notes as vn', 'vn.visit_id', '=', 'v.id')
+            ->selectRaw("
+            v.id as visit_id,
+            v.type as visit_type,
+            v.date as visit_date,
+            v.start_time,
+            v.end_time,
+            u.id as user_id,
+            u.name as user_name,
+            u.surname as user_surname,
+            u.email as user_email,
+            u.phone as user_phone,
+            u.wiek as user_age,
+            u.opis as user_description,
+            u.rodzaj_pacjenta as user_type,
+            d.name as doctor_name,
+            d.surname as doctor_surname,
 
-        if ($data->isEmpty()) {
+            -- notatki zwykłe
+            GROUP_CONCAT(
+                CASE WHEN vn.is_edit = 0 THEN CONCAT_WS('||', vn.text, vn.attachments, vn.note_date) END
+                SEPARATOR '##'
+            ) as normal_notes,
+
+            -- ostatnia szybka notatka
+            MAX(CASE WHEN vn.is_edit = 1 THEN CONCAT_WS('||', vn.text, vn.created_at) END) as fast_note,
+
+            -- poprzednie wizyty (ostatnie 5)
+            (SELECT GROUP_CONCAT(CONCAT_WS(' - ', date, start_time, end_time) ORDER BY date DESC SEPARATOR '##')
+             FROM visits pv
+             WHERE pv.user_id = v.user_id AND pv.date < v.date
+             LIMIT 5
+            ) as previous_visits
+        ")
+            ->where('v.id', $id)
+            ->groupBy('v.id', 'u.id', 'd.id', 'v.type', 'v.date', 'v.start_time', 'v.end_time')
+            ->first();
+
+        if (!$result) {
             return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
         }
 
-        // Pobieramy dane wizyty i użytkownika z pierwszego rekordu
-        $first = $data->first();
-
+        // Dane wizyty
         $current_visit = [
-            'id' => $first->visit_id,
-            'type' => $first->visit_type,
-            'date' => Carbon::parse($first->visit_date)->format('d.m.Y'),
-            'start_time' => Carbon::parse($first->start_time)->format('H:i'),
-            'end_time' => Carbon::parse($first->end_time)->format('H:i'),
+            'id' => $result->visit_id,
+            'type' => $result->visit_type,
+            'date' => Carbon::parse($result->visit_date)->format('d.m.Y'),
+            'start_time' => Carbon::parse($result->start_time)->format('H:i'),
+            'end_time' => Carbon::parse($result->end_time)->format('H:i'),
         ];
 
+        // Dane użytkownika
         $user = [
-            'id' => $first->user_id,
-            'name' => $first->user_name,
-            'surname' => $first->user_surname,
-            'email' => $first->user_email,
-            'phone' => $first->user_phone,
-            'age' => $first->user_age,
-            'description' => $first->user_description,
-            'type' => $first->user_type,
+            'id' => $result->user_id,
+            'name' => $result->user_name,
+            'surname' => $result->user_surname,
+            'email' => $result->user_email,
+            'phone' => $result->user_phone,
+            'age' => $result->user_age ? $result->user_age . ' lat' : null,
+            'description' => $result->user_description,
+            'type' => $result->user_type,
         ];
 
-        // Mapujemy notatki
-        $notes = $data->filter(fn($n) => !$n->note_is_edit)->map(function ($n) {
-            return [
-                'text' => $n->note_text,
-                'attachments' => $n->note_attachments ? json_decode($n->note_attachments, true) : [],
-                'visit_details' => $n->note_date ? [
-                    'date' => Carbon::parse($n->note_date)->format('d.m.Y'),
-                    'start_time' => Carbon::parse($n->start_time)->format('H:i'),
-                    'end_time' => Carbon::parse($n->end_time)->format('H:i'),
-                    'doctor' => $n->doctor_name ? [
-                        'name' => $n->doctor_name,
-                        'surname' => $n->doctor_surname,
+        // Notatki zwykłe
+        $notes = [];
+        if ($result->normal_notes) {
+            foreach (explode('##', $result->normal_notes) as $note) {
+                [$text, $attachments, $note_date] = explode('||', $note);
+                $notes[] = [
+                    'text' => $text,
+                    'attachments' => $attachments ? json_decode($attachments, true) : [],
+                    'visit_details' => $note_date ? [
+                        'date' => Carbon::parse($note_date)->format('d.m.Y'),
+                        'start_time' => Carbon::parse($result->start_time)->format('H:i'),
+                        'end_time' => Carbon::parse($result->end_time)->format('H:i'),
+                        'doctor' => $result->doctor_name ? [
+                            'name' => $result->doctor_name,
+                            'surname' => $result->doctor_surname,
+                        ] : null,
                     ] : null,
-                ] : null
-            ];
-        });
+                ];
+            }
+        }
 
         // Ostatnia szybka notatka
-        $fast_note_model = $data->filter(fn($n) => $n->note_is_edit)->last();
-        $fast_note = $fast_note_model ? [
-            'note_date' => Carbon::parse($fast_note_model->note_created_at)->format('d.m.Y H:i'),
-            'text' => $fast_note_model->note_text,
-        ] : null;
+        $fast_note = null;
+        if ($result->fast_note) {
+            [$text, $created_at] = explode('||', $result->fast_note);
+            $fast_note = [
+                'note_date' => Carbon::parse($created_at)->format('d.m.Y H:i'),
+                'text' => $text,
+            ];
+        }
 
-        // Poprzednie wizyty – osobne małe query, tylko 5 ostatnich
-        $previousVisits = DB::table('visits')
-            ->where('user_id', $first->user_id)
-            ->where('date', '<', $first->visit_date)
-            ->orderBy('date', 'desc')
-            ->limit(5)
-            ->get(['id', 'date', 'start_time', 'end_time'])
-            ->map(fn($v) => [
-                'full_date' => Carbon::parse($v->date)->format('d.m.Y') .
-                    ', ' . Carbon::parse($v->start_time)->format('H:i') .
-                    ' - ' . Carbon::parse($v->end_time)->format('H:i')
-            ]);
+        // Poprzednie wizyty
+        $previousVisits = [];
+        if ($result->previous_visits) {
+            foreach (explode('##', $result->previous_visits) as $v) {
+                [$date, $start, $end] = explode('-', $v);
+                $previousVisits[] = [
+                    'full_date' => Carbon::parse($date)->format('d.m.Y') . ', ' . Carbon::parse($start)->format('H:i') . ' - ' . Carbon::parse($end)->format('H:i')
+                ];
+            }
+        }
 
         return response()->json([
             'current_visit' => $current_visit,
             'user' => $user,
-            'date' => $first->visit_date,
-            'start_time' => $first->start_time,
-            'end_time' => $first->end_time,
+            'date' => $result->visit_date,
+            'start_time' => $result->start_time,
+            'end_time' => $result->end_time,
             'notes' => $notes,
             'fast_note' => $fast_note,
             'previous_visits' => $previousVisits,
