@@ -19,9 +19,14 @@ class SmsController extends Controller
             // Wybierz serwis (.com) z tokenem
             $service = $client->smsapiPLService($token);
 
-            // Zbuduj wiadomość
-            $sms = SendSmsBag::withMessage('48881427943', 'Testowy SMS z Laravel - SMSAPI v3 działa!');
-            $sms->from = 'Test'; // wymaga zatwierdzonej nazwy nadawcy w SMSAPI
+            // Nowa wiadomość
+            $sms = SendSmsBag::withMessage(
+                '48881427943',
+                'Czesc Michal, przypominamy o Twojej wizycie jutro o 10:15 przy al. Jana Pawla II 78.
+                Fizjoterapia Kaczmarek,
+                tel 697703263'
+            );
+            $sms->from = 'Test';
 
             // Wyślij SMS
             $response = $service->smsFeature()->sendSms($sms);
