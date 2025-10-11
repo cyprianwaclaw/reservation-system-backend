@@ -98,7 +98,11 @@ class CheckTomorrowVisits extends Command
                     $name = $user->name;
                     $visitTime = Carbon::parse($visit->date . ' ' . $visit->start_time)->format('H:i');
 
-                    $message = "Czesc $name, zapraszamy jutro o $visitTime na wizyte w naszym gabinecie: al. Jana Pawla II 78\n\nDo zobaczenia!\nFizjoterapia Kaczmarek 697703263";
+                    $message = "
+Czesc $name,/nzapraszamy jutro o $visitTime
+na wizyte w budynku basenu AWF pietro -1
+Zmiana terminu: 697703263/n/nFizjoterapia Kaczmarek";
+
                     $normalizedMessage = $this->normalizeMessage($message);
 
                     $sms = SendSmsBag::withMessage(
