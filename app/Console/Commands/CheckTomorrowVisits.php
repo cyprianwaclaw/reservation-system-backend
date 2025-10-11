@@ -96,9 +96,9 @@ class CheckTomorrowVisits extends Command
             if ($user->phone) {
                 try {
                     $name = $user->name;
-                    $visitTime = Carbon::parse($visit->date)->format('H:i');
+                    $visitTime = Carbon::parse($visit->date . ' ' . $visit->start_time)->format('H:i');
 
-                    $message = "Czesc $name, przypominamy o Twojej wizycie jutro o $visitTime przy al. Jana Pawla II 78.\n\nFizjoterapia Kaczmarek,\ntel. 697703263";
+                    $message = "Czesc $name, zapraszamy jutro o $visitTime na wizyte w naszym gabinecie: al. Jana Pawla II 78\n\nDo zobaczenia!\nFizjoterapia Kaczmarek 697703263";
                     $normalizedMessage = $this->normalizeMessage($message);
 
                     $sms = SendSmsBag::withMessage(
