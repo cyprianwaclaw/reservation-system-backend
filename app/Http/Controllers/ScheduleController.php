@@ -266,8 +266,95 @@ class ScheduleController extends Controller
         ]);
     }
 
-
     public function getVisitById($id)
+    {
+        // Pobranie wizyty razem z użytkownikiem i lekarzem
+        $visit = Visit::with(['doctor', 'user'])
+            ->find($id);
+
+        if (!$visit) {
+            return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
+        }
+
+        $user = $visit->user;
+
+        // Poprzednie wizyty pacjenta (limit np. 10 dla szybkości)
+        $previousVisits = Visit::with('doctor')
+            ->where('user_id', $user->id)
+            ->where('date', '<', $visit->date)
+            ->orderBy('date', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function ($prevVisit) {
+                return [
+                    'full_date' => Carbon::parse($prevVisit->date)->format('d.m.Y') .
+                        ', ' . Carbon::parse($prevVisit->start_time)->format('H:i') .
+                        ' - ' . Carbon::parse($prevVisit->end_time)->format('H:i'),
+                ];
+            });
+
+        // Notatki zwykłe (is_edit = false) z eager loading wizyty i lekarza
+        $notes = $user->notes()
+            ->where('is_edit', false)
+            ->with('visit.doctor')
+            ->get()
+            ->map(function ($note) {
+                $visit = $note->visit;
+                return [
+                    'text' => $note->text,
+                    'attachments' => $note->attachments,
+                    'visit_details' => $visit ? [
+                        'date' => Carbon::parse($visit->date)->format('d.m.Y'),
+                        'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
+                        'end_time' => Carbon::parse($visit->end_time)->format('H:i'),
+                        'doctor' => $visit->doctor ? [
+                            'name' => $visit->doctor->name,
+                            'surname' => $visit->doctor->surname,
+                        ] : null
+                    ] : null
+                ];
+            });
+
+        // Ostatnia notatka szybka (is_edit = true) w SQL
+        $fast_note_model = $visit->notes()
+            ->where('is_edit', true)
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        $fast_note = $fast_note_model ? [
+            'note_date' => $fast_note_model->created_at->format('d.m.Y H:i'),
+            'text' => $fast_note_model->text,
+        ] : null;
+
+        return response()->json([
+            'current_visit' => [
+                'id' => $visit->id,
+                'type' => $visit->type,
+                'date' => Carbon::parse($visit->date)->format('d.m.Y'),
+                'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
+                'end_time' => Carbon::parse($visit->end_time)->format('H:i'),
+            ],
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'surname' => $user->surname,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'age' => $user->age_with_suffix,
+                'description' => $user->opis,
+                'type' => $user->rodzaj_pacjenta,
+            ],
+            'date' => $visit->date,
+            'start_time' => $visit->start_time,
+            'end_time' => $visit->end_time,
+            'notes' => $notes,
+            'fast_note' => $fast_note,
+            'previous_visits' => $previousVisits,
+        ]);
+    }
+
+
+    public function getVisitById1($id)
     {
         $visit = Visit::with(['doctor', 'user', 'notes'])->find($id);
 
