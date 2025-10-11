@@ -266,11 +266,11 @@ class ScheduleController extends Controller
         ]);
     }
 
+
     public function getVisitById($id)
     {
-        // 1️⃣ Pobranie wizyty razem z użytkownikiem i lekarzem
-        $visit = Visit::with(['doctor', 'user'])
-            ->find($id);
+        // 1️⃣ Pobranie wizyty + użytkownika + lekarza
+        $visit = Visit::with(['doctor', 'user'])->find($id);
 
         if (!$visit) {
             return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
@@ -278,7 +278,7 @@ class ScheduleController extends Controller
 
         $user = $visit->user;
 
-        // 2️⃣ Poprzednie wizyty pacjenta (limit np. 5)
+        // 2️⃣ Poprzednie wizyty pacjenta (limit 5)
         $previousVisits = Visit::where('user_id', $user->id)
             ->where('date', '<', $visit->date)
             ->orderBy('date', 'desc')
@@ -293,30 +293,30 @@ class ScheduleController extends Controller
             });
 
         // 3️⃣ Notatki zwykłe i szybkie w jednym query z joinem
-        $notesQuery = DB::table('notes')
-            ->leftJoin('visits', 'notes.visit_id', '=', 'visits.id')
+        $notesQuery = DB::table('visit_notes')
+            ->leftJoin('visits', 'visit_notes.visit_id', '=', 'visits.id')
             ->leftJoin('doctors', 'visits.doctor_id', '=', 'doctors.id')
-            ->where('notes.user_id', $user->id)
+            ->where('visits.user_id', $user->id)
             ->select(
-                'notes.id',
-                'notes.text',
-                'notes.attachments',
-                'notes.is_edit',
-                'notes.created_at',
+                'visit_notes.id',
+                'visit_notes.text',
+                'visit_notes.attachments',
+                'visit_notes.is_edit',
+                'visit_notes.created_at',
                 'visits.date as visit_date',
                 'visits.start_time',
                 'visits.end_time',
                 'doctors.name as doctor_name',
                 'doctors.surname as doctor_surname'
             )
-            ->orderBy('notes.created_at')
+            ->orderBy('visit_notes.created_at')
             ->get();
 
         // Podział na zwykłe i szybkie notatki
         $notes = $notesQuery->where('is_edit', false)->map(function ($note) {
             return [
                 'text' => $note->text,
-                'attachments' => $note->attachments,
+                'attachments' => json_decode($note->attachments, true) ?? [],
                 'visit_details' => $note->visit_date ? [
                     'date' => Carbon::parse($note->visit_date)->format('d.m.Y'),
                     'start_time' => Carbon::parse($note->start_time)->format('H:i'),
@@ -335,7 +335,7 @@ class ScheduleController extends Controller
             'text' => $fast_note_model->text,
         ] : null;
 
-        // 4️⃣ Zwracamy wszystko
+        // 4️⃣ Zwracamy dane
         return response()->json([
             'current_visit' => [
                 'id' => $visit->id,
