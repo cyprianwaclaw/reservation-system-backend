@@ -98,10 +98,7 @@ class CheckTomorrowVisits extends Command
                     $name = $user->name;
                     $visitTime = Carbon::parse($visit->date . ' ' . $visit->start_time)->format('H:i');
 
-                    $message = "
-Czesc $name,/nzapraszamy jutro o $visitTime
-na wizyte w budynku basenu AWF pietro -1
-Zmiana terminu: 697703263/n/nFizjoterapia Kaczmarek";
+                    $message = "Czesc $name,\nzapraszamy jutro o $visitTime\nna wizyte w budynku basenu AWF pietro -1\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek";
 
                     $normalizedMessage = $this->normalizeMessage($message);
 
