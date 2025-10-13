@@ -15,7 +15,13 @@ class Visit extends Model
         'end_time',
     ];
 
-    // Relacje (opcjonalnie)
+    protected $casts = [
+        'date' => 'date',
+        'start_time' => 'datetime:H:i',
+        'end_time' => 'datetime:H:i',
+    ];
+
+
     public function doctor()
     {
         return $this->belongsTo(Doctor::class);
