@@ -24,7 +24,6 @@ use Illuminate\Support\Facades\Validator;
 use App\Mail\VisitRescheduledSimpleMail;
 use Illuminate\Support\Facades\DB;
 use App\Models\DoctorWorkingHour;
-use Illuminate\Support\Str;
 
 class ScheduleController extends Controller
 {
@@ -1351,38 +1350,86 @@ class ScheduleController extends Controller
 
     public function allUsers(Request $request)
     {
-        $limit  = (int) $request->get('limit', 50);
+        $limit = (int) $request->get('limit', 100);
         $offset = (int) $request->get('offset', 0);
         $search = trim($request->get('search', ''));
 
-        $query = DB::table('users')
-            ->select('id', 'name', 'surname', 'phone');
+        $query = User::select('id', 'name', 'surname', 'phone');
 
         if ($search !== '') {
-            $normalized = Str::ascii($search);
+            $parts = preg_split('/\s+/', $search);
+            $first = $parts[0] ?? '';
+            $second = $parts[1] ?? '';
 
-            $query->where(function ($q) use ($search, $normalized) {
-                $q->where('name_ascii', 'like', "{$normalized}%")
-                    ->orWhere('surname_ascii', 'like', "{$normalized}%")
-                    ->orWhere('phone', 'like', "%{$search}%");
+            $query->where(function ($q) use ($first, $second, $search) {
+                if ($second) {
+                    $q->where('name', 'like', "{$first}%")
+                        ->where('surname', 'like', "{$second}%");
+                } else {
+                    $q->where('name', 'like', "{$search}%")
+                        ->orWhere('surname', 'like', "{$search}%")
+                        ->orWhere('phone', 'like', "{$search}%");
+                }
             });
         }
 
-        $totalCount = $query->count();
+        // Klonujemy zapytanie do count
+        $totalCount = (clone $query)->count();
 
         $users = $query
-            ->orderBy('name')
+            ->orderBy('name') // MySQL używa indeksu, polskie znaki są poprawnie sortowane
             ->offset($offset)
             ->limit($limit)
             ->get();
 
+        $nextOffset = $offset + $limit;
+        $hasMore = $nextOffset < $totalCount;
+
+        // Grupowanie po literach, tylko w PHP dla zwróconej paczki
+        $grouped = $users->groupBy(fn($u) => mb_strtoupper(mb_substr($u->name, 0, 1, 'UTF-8')));
+
         return response()->json([
-            'data' => $users,
-            'hasMore' => $offset + $limit < $totalCount,
-            'nextOffset' => $offset + $limit,
+            'data' => $grouped,
+            'hasMore' => $hasMore,
+            'nextOffset' => $nextOffset,
         ]);
     }
 
+    
+
+    public function allUsersOld(Request $request)
+    {
+        $limit = $request->get('limit', 100);
+        $offset = $request->get('offset', 0);
+        $search = $request->get('search', '');
+
+        $query = User::select('id', 'name', 'surname')
+            ->orderBy('name');
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('surname', 'like', "%{$search}%");
+            });
+        }
+
+        // Pobranie aktualnej partii
+        $users = $query->offset($offset)->limit($limit)->get();
+
+        // Sprawdzenie, czy są dalsze rekordy
+        $nextOffset = $offset + $limit;
+        $hasMore = $query->count() > $nextOffset;
+
+        $grouped = $users->groupBy(function ($user) {
+            return strtoupper(substr($user->name, 0, 1));
+        });
+
+        return response()->json([
+            'data' => $grouped,
+            'hasMore' => $hasMore,
+            'nextOffset' => $nextOffset
+        ]);
+    }
 
     // Zwrócenie danych pojedynczego usera
     public function userByID($id)
