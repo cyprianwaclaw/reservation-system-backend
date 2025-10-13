@@ -607,81 +607,6 @@ class ScheduleController extends Controller
     }
 
 
-    public function getAllVisits(Request $request)
-    {
-        $week = $request->query('week'); // np. "18.08.2025 - 22.08.2025"
-
-        if (!$week) {
-            return response()->json(['error' => 'Brak parametru week'], 400);
-        }
-
-        // Rozbijamy zakres tygodnia na dwie daty
-        $dates = preg_split('/\s*-\s*/', $week);
-        if (count($dates) !== 2) {
-            return response()->json(['error' => 'Niepoprawny format parametru week'], 400);
-        }
-
-        $startDate = \DateTime::createFromFormat('d.m.Y', trim($dates[0]));
-        $endDate = \DateTime::createFromFormat('d.m.Y', trim($dates[1]));
-
-        if (!$startDate || !$endDate) {
-            return response()->json(['error' => 'Niepoprawny format dat'], 400);
-        }
-
-        $startDateFormatted = $startDate->format('Y-m-d');
-        $endDateFormatted = $endDate->format('Y-m-d');
-
-        // Pobieramy wizyty z powiązanymi danymi w jednym zapytaniu (eager loading)
-        $visits = Visit::with([
-            'doctor',
-            'user.notes' => fn($q) => $q->where('is_edit', false)->latest('created_at'),
-            'notes' => fn($q) => $q->where('is_edit', true)->latest('created_at'),
-        ])->whereBetween('date', [$startDateFormatted, $endDateFormatted])
-            ->get();
-
-        $result = $visits->map(function ($visit) {
-            $user = $visit->user;
-
-            // Ostatnia notatka użytkownika (is_edit = false)
-            $lastUserNoteModel = $user?->notes->first();
-
-            $lastUserNote = $lastUserNoteModel ? [
-                'text' => $lastUserNoteModel->text,
-                'attachments' => $lastUserNoteModel->attachments,
-                'visit_details' => $lastUserNoteModel->visit ? [
-                    'date' => $lastUserNoteModel->visit->date->format('d.m.Y'),
-                    'start_time' => $lastUserNoteModel->visit->start_time->format('H:i'),
-                    'end_time' => $lastUserNoteModel->visit->end_time->format('H:i'),
-                    'doctor' => $lastUserNoteModel->visit->doctor ? [
-                        'name' => $lastUserNoteModel->visit->doctor->name,
-                        'surname' => $lastUserNoteModel->visit->doctor->surname,
-                    ] : null,
-                ] : null,
-            ] : null;
-
-            // Ostatnia notatka szybka z tej wizyty (is_edit = true)
-            $fastNoteModel = $visit->notes->first();
-
-            return [
-                'visit_id'       => $visit->id,
-                'doctor_id'      => $visit->doctor?->id,
-                'doctor_name'    => $visit->doctor?->name,
-                'doctor_surname' => $visit->doctor?->surname,
-                'user_name'      => $user?->name,
-                'user_surname'   => $user?->surname,
-                'user_type'      => $user?->rodzaj_pacjenta,
-                'phone'          => $user?->phone,
-                'last_user_note' => $lastUserNote,
-                'fast_note'      => $fastNoteModel ? ['text' => $fastNoteModel->text] : null,
-                'date'           => $visit->date->format('d.m.Y'),
-                'start_time'     => $visit->start_time->format('H:i'),
-                'end_time'       => $visit->end_time->format('H:i'),
-            ];
-        });
-
-        return response()->json($result);
-    }
-
     // public function getAllVisits(Request $request)
     // {
     //     $week = $request->query('week'); // np. "18.08.2025 - 22.08.2025"
@@ -696,11 +621,8 @@ class ScheduleController extends Controller
     //         return response()->json(['error' => 'Niepoprawny format parametru week'], 400);
     //     }
 
-    //     $startDateStr = trim($dates[0]);
-    //     $endDateStr = trim($dates[1]);
-
-    //     $startDate = \DateTime::createFromFormat('d.m.Y', $startDateStr);
-    //     $endDate = \DateTime::createFromFormat('d.m.Y', $endDateStr);
+    //     $startDate = \DateTime::createFromFormat('d.m.Y', trim($dates[0]));
+    //     $endDate = \DateTime::createFromFormat('d.m.Y', trim($dates[1]));
 
     //     if (!$startDate || !$endDate) {
     //         return response()->json(['error' => 'Niepoprawny format dat'], 400);
@@ -709,76 +631,154 @@ class ScheduleController extends Controller
     //     $startDateFormatted = $startDate->format('Y-m-d');
     //     $endDateFormatted = $endDate->format('Y-m-d');
 
-    //     // Pobierz wizyty z zakresu dat
-    //     $visits = Visit::with(['doctor', 'user', 'notes'])->whereBetween('date', [
-    //         $startDateFormatted,
-    //         $endDateFormatted,
-    //     ])->get();
+    //     // Pobieramy wizyty z powiązanymi danymi w jednym zapytaniu (eager loading)
+    //     $visits = Visit::with([
+    //         'doctor',
+    //         'user.notes' => fn($q) => $q->where('is_edit', false)->latest('created_at'),
+    //         'notes' => fn($q) => $q->where('is_edit', true)->latest('created_at'),
+    //     ])->whereBetween('date', [$startDateFormatted, $endDateFormatted])
+    //         ->get();
 
     //     $result = $visits->map(function ($visit) {
     //         $user = $visit->user;
 
     //         // Ostatnia notatka użytkownika (is_edit = false)
-    //         $lastUserNoteModel = $user
-    //             ? $user->notes()
-    //             ->where('is_edit', false)
-    //             ->orderByDesc('created_at')
-    //             ->first()
-    //             : null;
+    //         $lastUserNoteModel = $user?->notes->first();
 
-    //         $lastUserNote = $lastUserNoteModel
-    //             ? (function ($note) {
-    //                 $visit = $note->visit;
+    //         $lastUserNote = $lastUserNoteModel ? [
+    //             'text' => $lastUserNoteModel->text,
+    //             'attachments' => $lastUserNoteModel->attachments,
+    //             'visit_details' => $lastUserNoteModel->visit ? [
+    //                 'date' => $lastUserNoteModel->visit->date->format('d.m.Y'),
+    //                 'start_time' => $lastUserNoteModel->visit->start_time->format('H:i'),
+    //                 'end_time' => $lastUserNoteModel->visit->end_time->format('H:i'),
+    //                 'doctor' => $lastUserNoteModel->visit->doctor ? [
+    //                     'name' => $lastUserNoteModel->visit->doctor->name,
+    //                     'surname' => $lastUserNoteModel->visit->doctor->surname,
+    //                 ] : null,
+    //             ] : null,
+    //         ] : null;
 
-    //                 return [
-    //                     'text'        => $note->text,
-    //                     'attachments' => $note->attachments,
-    //                     'visit_details' => $visit ? [
-    //                         'date'       => Carbon::parse($visit->date)->format('d.m.Y'),
-    //                         'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
-    //                         'end_time'   => Carbon::parse($visit->end_time)->format('H:i'),
-    //                         'doctor'     => $visit->doctor ? [
-    //                             'name'    => $visit->doctor->name,
-    //                             'surname' => $visit->doctor->surname,
-    //                         ] : null,
-    //                     ] : null,
-    //                 ];
-    //             })($lastUserNoteModel)
-    //             : null;
-
-    //         // Ostatnia notatka szybka (is_edit = true) z TEJ wizyty
-    //         $fastNoteModel = $visit->notes
-    //             ->where('is_edit', true)
-    //             ->sortByDesc('created_at')
-    //             ->first();
+    //         // Ostatnia notatka szybka z tej wizyty (is_edit = true)
+    //         $fastNoteModel = $visit->notes->first();
 
     //         return [
     //             'visit_id'       => $visit->id,
-    //             'doctor_id'      => optional($visit->doctor)->id,
-    //             'doctor_name'    => optional($visit->doctor)->name,
-    //             'doctor_surname' => optional($visit->doctor)->surname,
+    //             'doctor_id'      => $visit->doctor?->id,
+    //             'doctor_name'    => $visit->doctor?->name,
+    //             'doctor_surname' => $visit->doctor?->surname,
     //             'user_name'      => $user?->name,
     //             'user_surname'   => $user?->surname,
     //             'user_type'      => $user?->rodzaj_pacjenta,
     //             'phone'          => $user?->phone,
-
-    //             // Dokładnie taki sam format jak w getVisitById()
     //             'last_user_note' => $lastUserNote,
-
-    //             'fast_note' => $fastNoteModel
-    //                 ? [
-    //                     'text' => $fastNoteModel->text,
-    //                 ]
-    //                 : null,
-
-    //             'date'       => $visit->date,
-    //             'start_time' => $visit->start_time,
-    //             'end_time'   => $visit->end_time,
+    //             'fast_note'      => $fastNoteModel ? ['text' => $fastNoteModel->text] : null,
+    //             'date'           => $visit->date->format('d.m.Y'),
+    //             'start_time'     => $visit->start_time->format('H:i'),
+    //             'end_time'       => $visit->end_time->format('H:i'),
     //         ];
     //     });
 
     //     return response()->json($result);
     // }
+
+    public function getAllVisits(Request $request)
+    {
+        $week = $request->query('week'); // np. "18.08.2025 - 22.08.2025"
+
+        if (!$week) {
+            return response()->json(['error' => 'Brak parametru week'], 400);
+        }
+
+        // Rozbijamy zakres tygodnia na dwie daty
+        $dates = preg_split('/\s*-\s*/', $week);
+        if (count($dates) !== 2) {
+            return response()->json(['error' => 'Niepoprawny format parametru week'], 400);
+        }
+
+        $startDateStr = trim($dates[0]);
+        $endDateStr = trim($dates[1]);
+
+        $startDate = \DateTime::createFromFormat('d.m.Y', $startDateStr);
+        $endDate = \DateTime::createFromFormat('d.m.Y', $endDateStr);
+
+        if (!$startDate || !$endDate) {
+            return response()->json(['error' => 'Niepoprawny format dat'], 400);
+        }
+
+        $startDateFormatted = $startDate->format('Y-m-d');
+        $endDateFormatted = $endDate->format('Y-m-d');
+
+        // Pobierz wizyty z zakresu dat
+        $visits = Visit::with(['doctor', 'user', 'notes'])->whereBetween('date', [
+            $startDateFormatted,
+            $endDateFormatted,
+        ])->get();
+
+        $result = $visits->map(function ($visit) {
+            $user = $visit->user;
+
+            // Ostatnia notatka użytkownika (is_edit = false)
+            $lastUserNoteModel = $user
+                ? $user->notes()
+                ->where('is_edit', false)
+                ->orderByDesc('created_at')
+                ->first()
+                : null;
+
+            $lastUserNote = $lastUserNoteModel
+                ? (function ($note) {
+                    $visit = $note->visit;
+
+                    return [
+                        'text'        => $note->text,
+                        'attachments' => $note->attachments,
+                        'visit_details' => $visit ? [
+                            'date'       => Carbon::parse($visit->date)->format('d.m.Y'),
+                            'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
+                            'end_time'   => Carbon::parse($visit->end_time)->format('H:i'),
+                            'doctor'     => $visit->doctor ? [
+                                'name'    => $visit->doctor->name,
+                                'surname' => $visit->doctor->surname,
+                            ] : null,
+                        ] : null,
+                    ];
+                })($lastUserNoteModel)
+                : null;
+
+            // Ostatnia notatka szybka (is_edit = true) z TEJ wizyty
+            $fastNoteModel = $visit->notes
+                ->where('is_edit', true)
+                ->sortByDesc('created_at')
+                ->first();
+
+            return [
+                'visit_id'       => $visit->id,
+                'doctor_id'      => optional($visit->doctor)->id,
+                'doctor_name'    => optional($visit->doctor)->name,
+                'doctor_surname' => optional($visit->doctor)->surname,
+                'user_name'      => $user?->name,
+                'user_surname'   => $user?->surname,
+                'user_type'      => $user?->rodzaj_pacjenta,
+                'phone'          => $user?->phone,
+
+                // Dokładnie taki sam format jak w getVisitById()
+                'last_user_note' => $lastUserNote,
+
+                'fast_note' => $fastNoteModel
+                    ? [
+                        'text' => $fastNoteModel->text,
+                    ]
+                    : null,
+
+                'date'       => $visit->date,
+                'start_time' => $visit->start_time,
+                'end_time'   => $visit->end_time,
+            ];
+        });
+
+        return response()->json($result);
+    }
 
     public function getAllVisitsOld(Request $request)
     {
