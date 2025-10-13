@@ -13,7 +13,7 @@ class DoctorWorkingHourSeeder extends Seeder
      */
     public function run(): void
     {
-        $doctors = [1, 2, 3, 4];
+        $doctors = [1, 2, 3, 4, 5];
         $days = [1, 2, 3, 4, 5];
 
         foreach ($doctors as $doctorId) {
