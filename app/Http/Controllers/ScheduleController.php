@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Validator;
 use App\Mail\VisitRescheduledSimpleMail;
 use Illuminate\Support\Facades\DB;
 use App\Models\DoctorWorkingHour;
+use Illuminate\Support\Str;
 
 class ScheduleController extends Controller
 {
@@ -1350,87 +1351,38 @@ class ScheduleController extends Controller
 
     public function allUsers(Request $request)
     {
-        $limit = (int) $request->get('limit', 100);
+        $limit  = (int) $request->get('limit', 50);
         $offset = (int) $request->get('offset', 0);
         $search = trim($request->get('search', ''));
 
-        DB::statement("SET NAMES 'utf8mb4' COLLATE 'utf8mb4_polish_ci'");
-
-        $baseQuery = User::select('id', 'name', 'surname', 'phone');
+        $query = DB::table('users')
+            ->select('id', 'name', 'surname', 'phone');
 
         if ($search !== '') {
-            $baseQuery->where(function ($q) use ($search) {
-                $parts = preg_split('/\s+/', $search);
-                $first = $parts[0] ?? '';
-                $second = $parts[1] ?? '';
+            $normalized = Str::ascii($search);
 
-                $q->where(function ($q2) use ($first, $second) {
-                    $q2->where('name', 'like', "{$first}%")
-                        ->when($second, fn($qq) => $qq->where('surname', 'like', "{$second}%"));
-                })
-                    ->orWhere(function ($q3) use ($search) {
-                        $q3->where('name', 'like', "{$search}%")
-                            ->orWhere('surname', 'like', "{$search}%")
-                            ->orWhere('phone', 'like', "{$search}%"); // 📞 wyszukiwanie po numerze
-                    });
+            $query->where(function ($q) use ($search, $normalized) {
+                $q->where('name_ascii', 'like', "{$normalized}%")
+                    ->orWhere('surname_ascii', 'like', "{$normalized}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
             });
         }
 
-        $totalCount = $baseQuery->count();
+        $totalCount = $query->count();
 
-        $users = $baseQuery
-            ->orderByRaw("CONVERT(name USING utf8mb4) COLLATE utf8mb4_polish_ci ASC")
+        $users = $query
+            ->orderBy('name')
             ->offset($offset)
             ->limit($limit)
             ->get();
 
-        $nextOffset = $offset + $limit;
-        $hasMore = $nextOffset < $totalCount;
-
-        $grouped = $users->groupBy(function ($user) {
-            return mb_strtoupper(mb_substr($user->name, 0, 1, 'UTF-8'), 'UTF-8');
-        });
-
         return response()->json([
-            'data' => $grouped,
-            'hasMore' => $hasMore,
-            'nextOffset' => $nextOffset,
+            'data' => $users,
+            'hasMore' => $offset + $limit < $totalCount,
+            'nextOffset' => $offset + $limit,
         ]);
     }
 
-    public function allUsersOld(Request $request)
-    {
-        $limit = $request->get('limit', 100);
-        $offset = $request->get('offset', 0);
-        $search = $request->get('search', '');
-
-        $query = User::select('id', 'name', 'surname')
-            ->orderBy('name');
-
-        if ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('surname', 'like', "%{$search}%");
-            });
-        }
-
-        // Pobranie aktualnej partii
-        $users = $query->offset($offset)->limit($limit)->get();
-
-        // Sprawdzenie, czy są dalsze rekordy
-        $nextOffset = $offset + $limit;
-        $hasMore = $query->count() > $nextOffset;
-
-        $grouped = $users->groupBy(function ($user) {
-            return strtoupper(substr($user->name, 0, 1));
-        });
-
-        return response()->json([
-            'data' => $grouped,
-            'hasMore' => $hasMore,
-            'nextOffset' => $nextOffset
-        ]);
-    }
 
     // Zwrócenie danych pojedynczego usera
     public function userByID($id)
