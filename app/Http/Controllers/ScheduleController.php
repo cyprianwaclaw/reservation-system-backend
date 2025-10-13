@@ -1354,37 +1354,30 @@ class ScheduleController extends Controller
         $offset = (int) $request->get('offset', 0);
         $search = trim($request->get('search', ''));
 
-        // 🔤 Upewnij się, że zapytania używają polskiego porównywania znaków
         DB::statement("SET NAMES 'utf8mb4' COLLATE 'utf8mb4_polish_ci'");
 
-        $baseQuery = User::select('id', 'name', 'surname');
+        $baseQuery = User::select('id', 'name', 'surname', 'phone');
 
-        // 🔍 WYSZUKIWANIE — od początku imienia / nazwiska + wsparcie dla "cyprian wac"
         if ($search !== '') {
             $baseQuery->where(function ($q) use ($search) {
-                // Rozdziel frazę po spacji
                 $parts = preg_split('/\s+/', $search);
                 $first = $parts[0] ?? '';
                 $second = $parts[1] ?? '';
 
-                // Dopasowanie: "imię nazwisko"
                 $q->where(function ($q2) use ($first, $second) {
                     $q2->where('name', 'like', "{$first}%")
                         ->when($second, fn($qq) => $qq->where('surname', 'like', "{$second}%"));
                 })
-
-                    // Lub samo imię/nazwisko zaczynające się od wpisanej frazy
                     ->orWhere(function ($q3) use ($search) {
                         $q3->where('name', 'like', "{$search}%")
-                            ->orWhere('surname', 'like', "{$search}%");
+                            ->orWhere('surname', 'like', "{$search}%")
+                            ->orWhere('phone', 'like', "{$search}%"); // 📞 wyszukiwanie po numerze
                     });
             });
         }
 
-        // 📊 Zlicz wszystkich pasujących użytkowników (bez offset/limit)
         $totalCount = $baseQuery->count();
 
-        // 📚 Pobierz użytkowników z limitem i offsetem, sortując po polsku
         $users = $baseQuery
             ->orderByRaw("CONVERT(name USING utf8mb4) COLLATE utf8mb4_polish_ci ASC")
             ->offset($offset)
@@ -1394,7 +1387,6 @@ class ScheduleController extends Controller
         $nextOffset = $offset + $limit;
         $hasMore = $nextOffset < $totalCount;
 
-        // 🅰️ Grupowanie po pierwszej literze z obsługą polskich znaków
         $grouped = $users->groupBy(function ($user) {
             return mb_strtoupper(mb_substr($user->name, 0, 1, 'UTF-8'), 'UTF-8');
         });
@@ -1405,7 +1397,6 @@ class ScheduleController extends Controller
             'nextOffset' => $nextOffset,
         ]);
     }
-
 
     public function allUsersOld(Request $request)
     {
