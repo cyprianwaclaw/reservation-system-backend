@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Validator;
 use App\Mail\VisitRescheduledSimpleMail;
 use Illuminate\Support\Facades\DB;
 use App\Models\DoctorWorkingHour;
+use Illuminate\Support\Facades\Cache;
 
 class ScheduleController extends Controller
 {
@@ -477,58 +478,68 @@ class ScheduleController extends Controller
         ]);
     }
 
-
- public function getAvailableDaysNew(Request $request, ?string $start_date = null, ?string $days_ahead = null)
+    public function getAvailableDaysNew(Request $request, ?string $start_date = null, ?string $days_ahead = null)
     {
-        // Walidacja wartości pochodzących z parametrów ścieżki
+        // Walidacja parametrów
         Validator::make(
             ['start_date' => $start_date, 'days_ahead' => $days_ahead],
             ['start_date' => 'nullable|date', 'days_ahead' => 'nullable|integer|min:1|max:60']
-        )->validate(); // [web:1]
+        )->validate();
 
-        $startDate = $start_date ? Carbon::parse($start_date) : Carbon::today(); // [web:21]
-        $daysAhead = $days_ahead !== null ? (int)$days_ahead : 50; // [web:60]
+        $startDate = $start_date ? Carbon::parse($start_date) : Carbon::today();
+        $daysAhead = $days_ahead !== null ? (int)$days_ahead : 50;
 
-        // Limit horyzontu bez Bearer
-        $authHeader = $request->header('Authorization'); // [web:60]
+        // Limit dla nieautoryzowanych
+        $authHeader = $request->header('Authorization');
         if (empty($authHeader) || !str_starts_with($authHeader, 'Bearer ')) {
             $daysAhead = min($daysAhead, 15);
-        } // [web:29]
-
-        $dates = [];
-
-        for ($i = 0; $i < $daysAhead; $i++) {
-            $date = $startDate->copy()->addDays($i); // [web:21]
-
-            if ($date->isWeekend()) {
-                continue;
-            } // [web:21]
-
-            $hasAny = false;
-
-            foreach (Doctor::all() as $doctor) {
-                $slots = $this->generateDailySlots($doctor->id, $date); // [web:42]
-
-                if ($date->isToday()) {
-                    $now = Carbon::now('Europe/Warsaw');
-                    $slots = array_filter($slots, function ($slot) use ($now, $date) {
-                        $slotTime = Carbon::createFromFormat('Y-m-d H:i', $date->toDateString() . ' ' . $slot, 'Europe/Warsaw');
-                        return $slotTime->greaterThan($now);
-                    });
-                } // [web:21][web:47][web:33]
-
-                if (!empty($slots)) {
-                    $hasAny = true;
-                    break;
-                } // [web:33]
-            }
-
-            if ($hasAny) {
-                $dates[] = $date->toDateString(); // [web:21]
-            }
         }
 
-        return response()->json(['dates' => $dates]); // [web:6]
+        // Klucz cache dla całej listy dni
+        $cacheKey = "available_days_{$startDate->toDateString()}_{$daysAhead}";
+        $dates = Cache::remember($cacheKey, 300, function () use ($startDate, $daysAhead) {
+            $doctors = Cache::remember('doctors', 300, fn() => Doctor::all());
+            $dates = [];
+            $now = Carbon::now('Europe/Warsaw');
+
+            for ($i = 0; $i < $daysAhead; $i++) {
+                $date = $startDate->copy()->addDays($i);
+
+                if ($date->isWeekend()) {
+                    continue;
+                }
+
+                $hasAny = false;
+
+                foreach ($doctors as $doctor) {
+                    // Cache dla slotów dla konkretnego lekarza i dnia
+                    $slots = Cache::remember("slots_{$doctor->id}_{$date->toDateString()}", 300, function () use ($doctor, $date) {
+                        return $this->generateDailySlots($doctor->id, $date);
+                    });
+
+                    // Jeśli dzisiaj, filtrujemy przeszłe sloty
+                    if ($date->isToday()) {
+                        $slots = array_filter($slots, function ($slot) use ($date, $now) {
+                            $slotTime = Carbon::createFromFormat('Y-m-d H:i', $date->toDateString() . ' ' . $slot, 'Europe/Warsaw');
+                            return $slotTime->greaterThan($now);
+                        });
+                    }
+
+                    if (!empty($slots)) {
+                        $hasAny = true;
+                        break; // wystarczy jeden lekarz z wolnymi slotami
+                    }
+                }
+
+                if ($hasAny) {
+                    $dates[] = $date->toDateString();
+                }
+            }
+
+            return $dates;
+        });
+
+        return response()->json(['dates' => $dates]);
     }
 
     // 2) Lekarze dla dnia: /availability/date/{date}/doctors
