@@ -4,7 +4,26 @@ use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\VacationController;
 use Illuminate\Support\Facades\Route;
 
+
+
+
+Route::prefix('availability')->group(function () {
+    Route::get('/days/{start_date?}/{days_ahead?}', [ScheduleController::class, 'getAvailableDaysNew'])
+        ->where([
+            'start_date' => '\d{4}-\d{2}-\d{2}',   // YYYY-MM-DD
+            'days_ahead' => '\d{1,2}',            // 1..60
+        ]); // [web:60][web:66]
+
+    Route::get('/date/{date}/doctors', [ScheduleController::class, 'getDoctorsForDate'])
+        ->where('date', '\d{4}-\d{2}-\d{2}'); // [web:60][web:66]
+
+    Route::get('/doctor/{doctor}/date/{date}/slots', [ScheduleController::class, 'getDoctorSlots'])
+        ->where('date', '\d{4}-\d{2}-\d{2}'); // [web:60][web:66]
+});
+
+
 Route::get('/available-days', [ScheduleController::class, 'getAvailableDays']);
+// Route::get('/available-days-new', [ScheduleController::class, 'getAvailableDaysNew']);
 Route::post('/reserve', [ScheduleController::class, 'reserve']);
 Route::put('/visits-update/{visitId}', [ScheduleController::class, 'updateVisit']); //edycja danych wizyty
 Route::post('/doctor/login', [ScheduleController::class, 'loginDoctor']);
