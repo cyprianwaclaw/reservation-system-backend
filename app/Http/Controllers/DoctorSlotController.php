@@ -120,7 +120,7 @@ class DoctorSlotController extends Controller
         $mergedSlots = $groupedByVisit->flatMap(function ($group, $key) {
             if ($key !== 'free' && $group->count() > 0) {
                 return [[
-                    // 'doctor_id' => $group->first()->doctor_id,
+                    'doctor_id' => $group->first()->doctor_id,
                     'date' => Carbon::parse($group->first()->date)->format('Y-m-d'),
                     'start_time' => Carbon::parse($group->min('start_time'))->format('H:i'),
                     'end_time' => Carbon::parse($group->max('end_time'))->format('H:i'),
@@ -131,7 +131,7 @@ class DoctorSlotController extends Controller
 
             return $group->map(function ($slot) {
                 return [
-                    // 'doctor_id' => $slot->doctor_id,
+                    'doctor_id' => $slot->doctor_id,
                     'date' => Carbon::parse($slot->date)->format('Y-m-d'),
                     'start_time' => Carbon::parse($slot->start_time)->format('H:i'),
                     'end_time' => Carbon::parse($slot->end_time)->format('H:i'),
@@ -146,11 +146,18 @@ class DoctorSlotController extends Controller
             return $slot['date'] . '|' . $slot['doctor_id'];
         })->map(function ($slotsForDoctor) {
             $allDayFree = $slotsForDoctor->every(fn($slot) => $slot['type'] === 'available');
+
             return [
                 'doctor_id' => $slotsForDoctor->first()['doctor_id'],
                 'date' => $slotsForDoctor->first()['date'],
                 'all_day_free' => $allDayFree,
-                'slots' => $slotsForDoctor->values(),
+                'slots' => $slotsForDoctor->map(fn($slot) => [
+                    'date' => $slot['date'],
+                    'start_time' => $slot['start_time'],
+                    'end_time' => $slot['end_time'],
+                    'type' => $slot['type'],
+                    'visit_id' => $slot['visit_id'],
+                ])->values(),
             ];
         })->values();
 
