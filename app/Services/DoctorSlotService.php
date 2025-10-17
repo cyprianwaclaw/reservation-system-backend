@@ -272,6 +272,34 @@ class DoctorSlotService
 
         $this->clearCache();
     }
+    public function markVacation(string $doctorId, string $date, string $startTime, string $endTime): void
+    {
+        Log::info("Marking vacation slots for doctor {$doctorId}");
+        $start = Carbon::parse("{$date} {$startTime}");
+        $end = Carbon::parse("{$date} {$endTime}");
+        Log::info("Vacation date: {$date}, start: {$start->format('H:i:s')}, end: {$end->format('H:i:s')}");
+
+        $slots = DoctorSlot::where('doctor_id', $doctorId)
+            ->where('date', $date)
+            ->where('end_time', '>', $start->format('H:i:s'))
+            ->where('start_time', '<', $end->format('H:i:s'))
+            ->get();
+
+        Log::info("Found " . $slots->count() . " overlapping slots for vacation");
+        foreach ($slots as $slot) {
+            Log::info("Slot {$slot->id}: {$slot->start_time} - {$slot->end_time}, type: {$slot->type}");
+        }
+
+        $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
+            ->update([
+                'type' => 'vacation',
+                'visit_id' => null, // nie wiąże się z wizytą
+            ]);
+
+        Log::info("Updated {$updated} slots to vacation");
+
+        $this->clearCache();
+    }
      private function clearCache(): void
     {
         Cache::flush();
