@@ -3,6 +3,23 @@
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\VacationController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DoctorSlotController;
+
+Route::prefix('doctors/{doctorId}/slots')->group(function () {
+    Route::get('/', [DoctorSlotController::class, 'index']);          // pobranie slotów
+    Route::get('/generate', [DoctorSlotController::class, 'generate']); // generowanie slotów
+});
+
+Route::post('/slots/reserve', [DoctorSlotController::class, 'reserve']);
+Route::post('/slots/free', [DoctorSlotController::class, 'free']);
+Route::post('/slots/reserve-multi', [DoctorSlotController::class, 'reserveMulti']);
+// Route::get('/slots', [DoctorSlotController::class, 'getSlots']);
+Route::get('/slots/range', [DoctorSlotController::class, 'getSlotsRange']);
+
+
+
+
+
 
 
 
