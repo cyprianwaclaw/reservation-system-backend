@@ -141,20 +141,20 @@ class DoctorSlotController extends Controller
             });
         })->sortBy(['date', 'start_time'])->values();
 
-        // 🔹 Dodanie flagi all_day_free
-        $groupedByDate = $mergedSlots->groupBy('date')->map(function ($slotsForDay, $date) {
-            $allDayFree = $slotsForDay->every(function ($slot) {
-                return $slot['type'] === 'available';
-            });
+        // 🔹 Grupowanie slotów po dacie i doktorze
+        $groupedByDateDoctor = $mergedSlots->groupBy(function ($slot) {
+            return $slot['date'] . '|' . $slot['doctor_id'];
+        })->map(function ($slotsForDoctor) {
+            $allDayFree = $slotsForDoctor->every(fn($slot) => $slot['type'] === 'available');
             return [
-                'date' => $date,
+                'doctor_id' => $slotsForDoctor->first()['doctor_id'],
+                'date' => $slotsForDoctor->first()['date'],
                 'all_day_free' => $allDayFree,
-                'slots' => $slotsForDay->values(),
+                'slots' => $slotsForDoctor->values(),
             ];
         })->values();
 
-        return response()->json($groupedByDate);
-
+        return response()->json($groupedByDateDoctor);
     }
     // public function getSlotsRange(Request $request)
     // {
