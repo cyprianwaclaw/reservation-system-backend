@@ -249,7 +249,7 @@ class DoctorSlotController extends Controller
             return $group->map(function ($slot) {
                 return [
                     'doctor_id' => $slot->doctor_id,
-                    'date' => $slot->date,
+                    'date' => Carbon::parse($slot->date)->format('Y-m-d'),
                     'start_time' => Carbon::parse($slot->start_time)->format('H:i'),
                     'end_time' => Carbon::parse($slot->end_time)->format('H:i'),
                     'type' => $slot->type,
@@ -260,5 +260,4 @@ class DoctorSlotController extends Controller
 
         return response()->json($merged);
     }
-
 }
