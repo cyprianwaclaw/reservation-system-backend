@@ -56,28 +56,37 @@ class VisitObserver
         Log::info('VisitObserver triggered for deletion of visit: ' . $visit->id);
         $this->service->markAvailable($visit);
     }
-  public function updated(Visit $visit): void
+    public function updated(Visit $visit): void
     {
-        Log::info("VisitObserver updated for visit {$visit->id}");
+        Log::info("VisitObserver: update triggered for visit {$visit->id}");
 
-        // Sprawdzamy, czy zmieniono kluczowe pola
-        if (
-            $visit->isDirty(['date', 'start_time', 'end_time', 'doctor_id'])
-        ) {
-            Log::info("Visit {$visit->id} changed — updating slots.");
+        $hasDateOrTimeChanged =
+            $visit->wasChanged('date') ||
+            $visit->wasChanged('start_time') ||
+            $visit->wasChanged('end_time') ||
+            $visit->wasChanged('doctor_id');
 
-            // 1️⃣ Najpierw zwolnij poprzednie sloty (stare wartości)
-            $original = (object)[
+        if ($hasDateOrTimeChanged) {
+            Log::info("Visit {$visit->id} time or doctor changed — updating slots...");
+
+            // Utwórz obiekt Visit z oryginalnymi danymi (przed zmianą)
+            $originalVisit = new Visit([
                 'doctor_id'  => $visit->getOriginal('doctor_id'),
                 'date'       => $visit->getOriginal('date'),
                 'start_time' => $visit->getOriginal('start_time'),
                 'end_time'   => $visit->getOriginal('end_time'),
-                'id'         => $visit->id,
-            ];
-            $this->service->markAvailable($original);
+            ]);
+            $originalVisit->id = $visit->id;
 
-            // 2️⃣ Następnie zarezerwuj nowe
+            // Zwolnij stare sloty
+            Log::info("Releasing old slots for visit {$visit->id}");
+            $this->service->markAvailable($originalVisit);
+
+            // Zajmij nowe sloty
+            Log::info("Marking new reserved slots for visit {$visit->id}");
             $this->service->markReserved($visit);
+        } else {
+            Log::info("Visit {$visit->id} updated, but no date/time change detected — skipping slot update.");
         }
     }
 }
