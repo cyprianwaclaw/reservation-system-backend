@@ -360,13 +360,13 @@ class DoctorSlotService
     }
 
     /**
-     * Oznacza sloty jako zajęte (np. po utworzeniu lub edycji wizyty)
+     * Zajmuje sloty dla wizyty
      */
     public function markReserved(Visit $visit): void
     {
         $visitDate = Carbon::parse($visit->date)->format('Y-m-d');
         $visitStart = Carbon::parse("{$visitDate} {$visit->start_time}");
-        $visitEnd = Carbon::parse("{$visitDate} {$visit->end_time}");
+        $visitEnd   = Carbon::parse("{$visitDate} {$visit->end_time}");
 
         Log::info("Marking reserved slots for visit {$visit->id}");
         Log::info("Visit start: {$visitStart->format('Y-m-d H:i:s')}, end: {$visitEnd->format('Y-m-d H:i:s')}");
@@ -377,28 +377,28 @@ class DoctorSlotService
             ->where('start_time', '<', $visitEnd->format('H:i:s'))
             ->get();
 
-        Log::info("Found {$slots->count()} overlapping slots for reservation");
+        Log::info("Found {$slots->count()} overlapping slots");
 
-        $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))->update([
-            'type' => 'reserved',
-            'visit_id' => $visit->id,
-        ]);
+        $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
+            ->update([
+                'type' => 'reserved',
+                'visit_id' => $visit->id,
+            ]);
 
-        Log::info("Updated {$updated} slots to reserved for visit {$visit->id}");
+        Log::info("Updated {$updated} slots to reserved");
         $this->clearCache();
     }
 
     /**
-     * Oznacza sloty jako wolne (np. po anulowaniu lub przesunięciu wizyty)
+     * Zwalnia sloty wizyty
      */
     public function markAvailable(Visit $visit): void
     {
         $visitDate = Carbon::parse($visit->date)->format('Y-m-d');
         $visitStart = Carbon::parse("{$visitDate} {$visit->start_time}");
-        $visitEnd = Carbon::parse("{$visitDate} {$visit->end_time}");
+        $visitEnd   = Carbon::parse("{$visitDate} {$visit->end_time}");
 
         Log::info("Releasing slots for visit {$visit->id}");
-        Log::info("Visit start: {$visitStart->format('Y-m-d H:i:s')}, end: {$visitEnd->format('Y-m-d H:i:s')}");
 
         $slots = DoctorSlot::where('doctor_id', $visit->doctor_id)
             ->where('date', $visitDate)
@@ -408,40 +408,13 @@ class DoctorSlotService
 
         Log::info("Found {$slots->count()} overlapping slots to release");
 
-        $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))->update([
-            'type' => 'available',
-            'visit_id' => null,
-        ]);
+        $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
+            ->update([
+                'type' => 'available',
+                'visit_id' => null,
+            ]);
 
-        Log::info("Updated {$updated} slots to available for visit {$visit->id}");
-        $this->clearCache();
-    }
-
-    /**
-     * Oznacza sloty jako "vacation"
-     */
-    public function markVacation(string $doctorId, string $date, string $startTime, string $endTime): void
-    {
-        Log::info("Marking vacation slots for doctor {$doctorId}");
-        Log::info("Vacation date: {$date}, start: {$startTime}, end: {$endTime}");
-
-        $start = Carbon::parse("{$date} {$startTime}");
-        $end = Carbon::parse("{$date} {$endTime}");
-
-        $slots = DoctorSlot::where('doctor_id', $doctorId)
-            ->where('date', $date)
-            ->where('end_time', '>', $start->format('H:i:s'))
-            ->where('start_time', '<', $end->format('H:i:s'))
-            ->get();
-
-        Log::info("Found {$slots->count()} overlapping slots for vacation");
-
-        $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))->update([
-            'type' => 'vacation',
-            'visit_id' => null,
-        ]);
-
-        Log::info("Updated {$updated} slots to vacation");
+        Log::info("Updated {$updated} slots to available");
         $this->clearCache();
     }
 

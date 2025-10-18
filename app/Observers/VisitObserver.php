@@ -116,19 +116,24 @@ class VisitObserver
     {
         Log::info("VisitObserver UPDATED triggered for visit {$visit->id}");
 
-        if ($visit->wasChanged(['date', 'start_time', 'end_time'])) {
-            Log::info("Visit {$visit->id} time or date changed — refreshing slots");
+        // Sprawdzamy czy zmieniła się data, godzina lub lekarz
+        if ($visit->wasChanged(['date', 'start_time', 'end_time', 'doctor_id'])) {
+            Log::info("Visit {$visit->id} changed — updating slots");
 
-            // Zwalniamy stare sloty (używając oryginalnych wartości)
-            $old = (object)[
-                'id' => $visit->id,
-                'doctor_id' => $visit->doctor_id,
-                'date' => $visit->getOriginal('date'),
+            // Zwolnij stare sloty
+            $oldVisit = new Visit([
+                'doctor_id'  => $visit->getOriginal('doctor_id'),
+                'date'       => $visit->getOriginal('date'),
                 'start_time' => $visit->getOriginal('start_time'),
-                'end_time' => $visit->getOriginal('end_time'),
-            ];
+                'end_time'   => $visit->getOriginal('end_time'),
+            ]);
+            $oldVisit->id = $visit->id;
 
-            $this->service->markAvailable(new Visit((array) $old));
+            Log::info("Releasing old slots for visit {$visit->id}");
+            $this->service->markAvailable($oldVisit);
+
+            // Zajmij nowe sloty
+            Log::info("Marking new reserved slots for visit {$visit->id}");
             $this->service->markReserved($visit);
         }
     }
