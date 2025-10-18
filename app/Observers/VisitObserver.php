@@ -30,6 +30,67 @@
 //     }
 // }<?php
 
+// namespace App\Observers;
+
+// use App\Models\Visit;
+// use App\Services\DoctorSlotService;
+// use Illuminate\Support\Facades\Log;
+
+// class VisitObserver
+// {
+//     protected DoctorSlotService $service;
+
+//     public function __construct(DoctorSlotService $service)
+//     {
+//         $this->service = $service;
+//     }
+
+//     public function created(Visit $visit): void
+//     {
+//         Log::info('VisitObserver triggered for visit: ' . $visit->id);
+//         $this->service->markReserved($visit);
+//     }
+
+//     public function deleted(Visit $visit): void
+//     {
+//         Log::info('VisitObserver triggered for deletion of visit: ' . $visit->id);
+//         $this->service->markAvailable($visit);
+//     }
+//     public function updated(Visit $visit): void
+//     {
+//         Log::info("VisitObserver: update triggered for visit {$visit->id}");
+
+//         $hasDateOrTimeChanged =
+//             $visit->wasChanged('date') ||
+//             $visit->wasChanged('start_time') ||
+//             $visit->wasChanged('end_time') ||
+//             $visit->wasChanged('doctor_id');
+
+//         if ($hasDateOrTimeChanged) {
+//             Log::info("Visit {$visit->id} time or doctor changed — updating slots...");
+
+//             // Utwórz obiekt Visit z oryginalnymi danymi (przed zmianą)
+//             $originalVisit = new Visit([
+//                 'doctor_id'  => $visit->getOriginal('doctor_id'),
+//                 'date'       => $visit->getOriginal('date'),
+//                 'start_time' => $visit->getOriginal('start_time'),
+//                 'end_time'   => $visit->getOriginal('end_time'),
+//             ]);
+//             $originalVisit->id = $visit->id;
+
+//             // Zwolnij stare sloty
+//             Log::info("Releasing old slots for visit {$visit->id}");
+//             $this->service->markAvailable($originalVisit);
+
+//             // Zajmij nowe sloty
+//             Log::info("Marking new reserved slots for visit {$visit->id}");
+//             $this->service->markReserved($visit);
+//         } else {
+//             Log::info("Visit {$visit->id} updated, but no date/time change detected — skipping slot update.");
+//         }
+//     }
+// }<?php
+
 namespace App\Observers;
 
 use App\Models\Visit;
@@ -47,46 +108,34 @@ class VisitObserver
 
     public function created(Visit $visit): void
     {
-        Log::info('VisitObserver triggered for visit: ' . $visit->id);
+        Log::info("VisitObserver CREATED triggered for visit {$visit->id}");
         $this->service->markReserved($visit);
+    }
+
+    public function updated(Visit $visit): void
+    {
+        Log::info("VisitObserver UPDATED triggered for visit {$visit->id}");
+
+        if ($visit->wasChanged(['date', 'start_time', 'end_time'])) {
+            Log::info("Visit {$visit->id} time or date changed — refreshing slots");
+
+            // Zwalniamy stare sloty (używając oryginalnych wartości)
+            $old = (object)[
+                'id' => $visit->id,
+                'doctor_id' => $visit->doctor_id,
+                'date' => $visit->getOriginal('date'),
+                'start_time' => $visit->getOriginal('start_time'),
+                'end_time' => $visit->getOriginal('end_time'),
+            ];
+
+            $this->service->markAvailable(new Visit((array) $old));
+            $this->service->markReserved($visit);
+        }
     }
 
     public function deleted(Visit $visit): void
     {
-        Log::info('VisitObserver triggered for deletion of visit: ' . $visit->id);
+        Log::info("VisitObserver DELETED triggered for visit {$visit->id}");
         $this->service->markAvailable($visit);
-    }
-    public function updated(Visit $visit): void
-    {
-        Log::info("VisitObserver: update triggered for visit {$visit->id}");
-
-        $hasDateOrTimeChanged =
-            $visit->wasChanged('date') ||
-            $visit->wasChanged('start_time') ||
-            $visit->wasChanged('end_time') ||
-            $visit->wasChanged('doctor_id');
-
-        if ($hasDateOrTimeChanged) {
-            Log::info("Visit {$visit->id} time or doctor changed — updating slots...");
-
-            // Utwórz obiekt Visit z oryginalnymi danymi (przed zmianą)
-            $originalVisit = new Visit([
-                'doctor_id'  => $visit->getOriginal('doctor_id'),
-                'date'       => $visit->getOriginal('date'),
-                'start_time' => $visit->getOriginal('start_time'),
-                'end_time'   => $visit->getOriginal('end_time'),
-            ]);
-            $originalVisit->id = $visit->id;
-
-            // Zwolnij stare sloty
-            Log::info("Releasing old slots for visit {$visit->id}");
-            $this->service->markAvailable($originalVisit);
-
-            // Zajmij nowe sloty
-            Log::info("Marking new reserved slots for visit {$visit->id}");
-            $this->service->markReserved($visit);
-        } else {
-            Log::info("Visit {$visit->id} updated, but no date/time change detected — skipping slot update.");
-        }
     }
 }
