@@ -235,8 +235,8 @@ class DoctorSlotController extends Controller
 public function rollTodaySlots(DoctorSlotService $slotService)
 {
     // Data dzisiejsza
-    // $today = Carbon::today()->toDateString();
-        $today = '2025-10-20'; // na sztywno, żeby przetestować
+    $today = Carbon::today()->toDateString();
+        // $today = '2025-10-20'; // na sztywno, żeby przetestować
         // Pobieramy wszystkich lekarzy, którzy mają sloty dzisiaj
         $doctorIds = \App\Models\DoctorSlot::where('date', $today)
         ->distinct()
