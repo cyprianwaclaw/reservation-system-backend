@@ -8,6 +8,7 @@ use App\Mail\VisitCancelledMail;
 use App\Models\Visit;
 use App\Mail\VisitRescheduledSimpleMail;
 use App\Http\Controllers\SmsController;
+use App\Http\Controllers\DoctorSlotController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -16,6 +17,8 @@ Route::get('/run-reminders', function () {
     Artisan::call('visits:check-tomorrow');
     return 'Scheduler executed';
 });
+
+Route::get('/slots/roll-today', [DoctorSlotController::class, 'rollTodaySlots']);
 
 Route::get('/send-sms', [SmsController::class, 'sendSms']);
 

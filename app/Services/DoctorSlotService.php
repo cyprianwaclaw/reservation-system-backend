@@ -306,6 +306,123 @@
 //     }
 // }<?php
 
+// namespace App\Services;
+
+// use App\Models\DoctorSlot;
+// use App\Models\DoctorWorkingHour;
+// use App\Models\Visit;
+// use Carbon\Carbon;
+// use Carbon\CarbonPeriod;
+// use Illuminate\Support\Facades\Cache;
+// use Illuminate\Support\Facades\Log;
+
+// class DoctorSlotService
+// {
+//     /**
+//      * Generuje sloty dla lekarza w danym zakresie dat
+//      */
+//     public function generateSlots(int $doctorId, Carbon $from, Carbon $to, int $slotLengthMinutes = 45): void
+//     {
+//         $workingHours = DoctorWorkingHour::where('doctor_id', $doctorId)->get();
+
+//         $period = CarbonPeriod::create($from, $to);
+//         foreach ($period as $date) {
+//             $dayOfWeek = $date->dayOfWeekIso;
+//             $workingHour = $workingHours->firstWhere('day_of_week', $dayOfWeek);
+
+//             if (!$workingHour) continue;
+
+//             $workStart = Carbon::parse("{$date->toDateString()} {$workingHour->start_time}");
+//             $workEnd = Carbon::parse("{$date->toDateString()} {$workingHour->end_time}");
+
+//             $slots = [];
+//             $current = $workStart->copy();
+
+//             while ($current->lt($workEnd)) {
+//                 $slotEnd = $current->copy()->addMinutes($slotLengthMinutes);
+//                 if ($slotEnd->gt($workEnd)) break;
+
+//                 $slots[] = [
+//                     'doctor_id' => $doctorId,
+//                     'date' => $date->toDateString(),
+//                     'start_time' => $current->format('H:i:s'),
+//                     'end_time' => $slotEnd->format('H:i:s'),
+//                     'type' => 'available',
+//                     'created_at' => now(),
+//                     'updated_at' => now(),
+//                 ];
+
+//                 $current->addMinutes($slotLengthMinutes);
+//             }
+
+//             DoctorSlot::upsert($slots, ['doctor_id', 'date', 'start_time'], ['end_time', 'updated_at']);
+//         }
+//     }
+
+//     /**
+//      * Zajmuje sloty dla wizyty
+//      */
+//     public function markReserved(Visit $visit): void
+//     {
+//         $visitDate = Carbon::parse($visit->date)->format('Y-m-d');
+//         $visitStart = Carbon::parse("{$visitDate} {$visit->start_time}");
+//         $visitEnd   = Carbon::parse("{$visitDate} {$visit->end_time}");
+
+//         Log::info("Marking reserved slots for visit {$visit->id}");
+//         Log::info("Visit start: {$visitStart->format('Y-m-d H:i:s')}, end: {$visitEnd->format('Y-m-d H:i:s')}");
+
+//         $slots = DoctorSlot::where('doctor_id', $visit->doctor_id)
+//             ->where('date', $visitDate)
+//             ->where('end_time', '>', $visitStart->format('H:i:s'))
+//             ->where('start_time', '<', $visitEnd->format('H:i:s'))
+//             ->get();
+
+//         Log::info("Found {$slots->count()} overlapping slots");
+
+//         $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
+//             ->update([
+//                 'type' => 'reserved',
+//                 'visit_id' => $visit->id,
+//             ]);
+
+//         Log::info("Updated {$updated} slots to reserved");
+//         $this->clearCache();
+//     }
+
+//     /**
+//      * Zwalnia sloty wizyty
+//      */
+//     public function markAvailable(Visit $visit): void
+//     {
+//         $visitDate = Carbon::parse($visit->date)->format('Y-m-d');
+//         $visitStart = Carbon::parse("{$visitDate} {$visit->start_time}");
+//         $visitEnd   = Carbon::parse("{$visitDate} {$visit->end_time}");
+
+//         Log::info("Releasing slots for visit {$visit->id}");
+
+//         $slots = DoctorSlot::where('doctor_id', $visit->doctor_id)
+//             ->where('date', $visitDate)
+//             ->where('end_time', '>', $visitStart->format('H:i:s'))
+//             ->where('start_time', '<', $visitEnd->format('H:i:s'))
+//             ->get();
+
+//         Log::info("Found {$slots->count()} overlapping slots to release");
+
+//         $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
+//             ->update([
+//                 'type' => 'available',
+//                 'visit_id' => null,
+//             ]);
+
+//         Log::info("Updated {$updated} slots to available");
+//         $this->clearCache();
+//     }
+
+//     private function clearCache(): void
+//     {
+//         Cache::flush();
+//     }
+// }
 namespace App\Services;
 
 use App\Models\DoctorSlot;
@@ -325,12 +442,21 @@ class DoctorSlotService
     {
         $workingHours = DoctorWorkingHour::where('doctor_id', $doctorId)->get();
 
+        if ($workingHours->isEmpty()) {
+            Log::warning("Doctor $doctorId has no working hours configured.");
+            return;
+        }
+
         $period = CarbonPeriod::create($from, $to);
+
         foreach ($period as $date) {
             $dayOfWeek = $date->dayOfWeekIso;
             $workingHour = $workingHours->firstWhere('day_of_week', $dayOfWeek);
 
-            if (!$workingHour) continue;
+            if (!$workingHour) {
+                Log::info("Doctor $doctorId does not work on {$date->toDateString()}");
+                continue;
+            }
 
             $workStart = Carbon::parse("{$date->toDateString()} {$workingHour->start_time}");
             $workEnd = Carbon::parse("{$date->toDateString()} {$workingHour->end_time}");
@@ -348,6 +474,7 @@ class DoctorSlotService
                     'start_time' => $current->format('H:i:s'),
                     'end_time' => $slotEnd->format('H:i:s'),
                     'type' => 'available',
+                    'visit_id' => null,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ];
@@ -355,7 +482,17 @@ class DoctorSlotService
                 $current->addMinutes($slotLengthMinutes);
             }
 
-            DoctorSlot::upsert($slots, ['doctor_id', 'date', 'start_time'], ['end_time', 'updated_at']);
+            if (!empty($slots)) {
+                DoctorSlot::upsert(
+                    $slots,
+                    ['doctor_id', 'date', 'start_time'], // unikalność
+                    ['end_time', 'type', 'updated_at']   // co aktualizować jeśli konflikt
+                );
+
+                Log::info("Inserted/updated " . count($slots) . " slots for doctor $doctorId on " . $date->toDateString());
+            } else {
+                Log::info("No slots generated for doctor $doctorId on " . $date->toDateString());
+            }
         }
     }
 
@@ -364,12 +501,11 @@ class DoctorSlotService
      */
     public function markReserved(Visit $visit): void
     {
-        $visitDate = Carbon::parse($visit->date)->format('Y-m-d');
+        $visitDate = Carbon::parse($visit->date)->toDateString();
         $visitStart = Carbon::parse("{$visitDate} {$visit->start_time}");
         $visitEnd   = Carbon::parse("{$visitDate} {$visit->end_time}");
 
         Log::info("Marking reserved slots for visit {$visit->id}");
-        Log::info("Visit start: {$visitStart->format('Y-m-d H:i:s')}, end: {$visitEnd->format('Y-m-d H:i:s')}");
 
         $slots = DoctorSlot::where('doctor_id', $visit->doctor_id)
             ->where('date', $visitDate)
@@ -379,13 +515,17 @@ class DoctorSlotService
 
         Log::info("Found {$slots->count()} overlapping slots");
 
-        $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
-            ->update([
-                'type' => 'reserved',
-                'visit_id' => $visit->id,
-            ]);
+        if ($slots->isNotEmpty()) {
+            $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
+                ->update([
+                    'type' => 'reserved',
+                    'visit_id' => $visit->id,
+                    'updated_at' => now(),
+                ]);
 
-        Log::info("Updated {$updated} slots to reserved");
+            Log::info("Updated {$updated} slots to reserved");
+        }
+
         $this->clearCache();
     }
 
@@ -394,7 +534,7 @@ class DoctorSlotService
      */
     public function markAvailable(Visit $visit): void
     {
-        $visitDate = Carbon::parse($visit->date)->format('Y-m-d');
+        $visitDate = Carbon::parse($visit->date)->toDateString();
         $visitStart = Carbon::parse("{$visitDate} {$visit->start_time}");
         $visitEnd   = Carbon::parse("{$visitDate} {$visit->end_time}");
 
@@ -408,13 +548,17 @@ class DoctorSlotService
 
         Log::info("Found {$slots->count()} overlapping slots to release");
 
-        $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
-            ->update([
-                'type' => 'available',
-                'visit_id' => null,
-            ]);
+        if ($slots->isNotEmpty()) {
+            $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
+                ->update([
+                    'type' => 'available',
+                    'visit_id' => null,
+                    'updated_at' => now(),
+                ]);
 
-        Log::info("Updated {$updated} slots to available");
+            Log::info("Updated {$updated} slots to available");
+        }
+
         $this->clearCache();
     }
 

@@ -7,6 +7,8 @@ use App\Services\DoctorSlotService;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+
 
 class DoctorSlotController extends Controller
 {
@@ -228,4 +230,57 @@ class DoctorSlotController extends Controller
 
     //     return response()->json($merged);
     // }
+
+  // Endpoint do „rollowania” slotów – usuwa dzisiejsze i generuje na kolejny dzień
+public function rollTodaySlots(DoctorSlotService $slotService)
+{
+    // Data dzisiejsza
+    // $today = Carbon::today()->toDateString();
+        $today = '2025-10-20'; // na sztywno, żeby przetestować
+        // Pobieramy wszystkich lekarzy, którzy mają sloty dzisiaj
+        $doctorIds = \App\Models\DoctorSlot::where('date', $today)
+        ->distinct()
+        ->pluck('doctor_id');
+
+    $results = [];
+
+    foreach ($doctorIds as $doctorId) {
+        // 1️⃣ Usuwamy sloty dzisiaj dla tego lekarza
+        $deleted = \App\Models\DoctorSlot::where('doctor_id', $doctorId)
+            ->where('date', $today)
+            ->delete();
+
+        Log::info("Deleted $deleted slots for doctor $doctorId for today ($today)");
+
+        // 2️⃣ Pobieramy ostatni dzień w slotach po usunięciu dzisiejszych
+        $lastSlotDate = \App\Models\DoctorSlot::where('doctor_id', $doctorId)
+            ->orderByDesc('date')
+            ->value('date');
+
+        $lastDate = $lastSlotDate ? Carbon::parse($lastSlotDate) : Carbon::today();
+
+        // 3️⃣ Generujemy sloty dla kolejnego dnia po ostatnim
+        $nextDay = $lastDate->copy()->addDay();
+
+        $slotService->generateSlots(
+            doctorId: $doctorId,
+            from: $nextDay,
+            to: $nextDay,
+            slotLengthMinutes: 45
+        );
+
+        Log::info("Generated slots for doctor $doctorId on {$nextDay->toDateString()}");
+
+        $results[] = [
+            'doctor_id' => $doctorId,
+            'today_deleted' => $today,
+            'next_day_generated' => $nextDay->toDateString(),
+        ];
+    }
+
+    return response()->json([
+        'message' => 'Rolled today\'s slots successfully',
+        'results' => $results,
+    ]);
+}
 }
