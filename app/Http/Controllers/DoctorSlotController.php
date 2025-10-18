@@ -32,50 +32,50 @@ class DoctorSlotController extends Controller
         return response()->json(['message' => 'Sloty wygenerowane']);
     }
 
-    public function reserve(Request $request, DoctorSlotService $service)
-    {
-        $service->reserveSlots(
-            doctorId: $request->doctor_id,
-            date: $request->date,
-            visitStart: $request->start_time,
-            visitEnd: $request->end_time,
-            visitId: $request->visit_id
-        );
+    // public function reserve(Request $request, DoctorSlotService $service)
+    // {
+    //     $service->reserveSlots(
+    //         doctorId: $request->doctor_id,
+    //         date: $request->date,
+    //         visitStart: $request->start_time,
+    //         visitEnd: $request->end_time,
+    //         visitId: $request->visit_id
+    //     );
 
-        return response()->json(['message' => 'Sloty zarezerwowane']);
-    }
+    //     return response()->json(['message' => 'Sloty zarezerwowane']);
+    // }
 
-    public function free(Request $request, DoctorSlotService $service)
-    {
-        $service->freeSlots($request->visit_id);
+    // public function free(Request $request, DoctorSlotService $service)
+    // {
+    //     $service->freeSlots($request->visit_id);
 
-        return response()->json(['message' => 'Sloty zwolnione']);
-    }
+    //     return response()->json(['message' => 'Sloty zwolnione']);
+    // }
 
-    public function reserveMulti(Request $request, DoctorSlotService $service)
-    {
-        $request->validate([
-            'doctor_id' => 'required|integer|exists:doctors,id',
-            'date' => 'required|date',
-            'start_time' => 'required|date_format:H:i:s',
-            'visit_minutes' => 'required|integer|min:15',
-            'visit_id' => 'required|integer|exists:visits,id',
-        ]);
+    // public function reserveMulti(Request $request, DoctorSlotService $service)
+    // {
+    //     $request->validate([
+    //         'doctor_id' => 'required|integer|exists:doctors,id',
+    //         'date' => 'required|date',
+    //         'start_time' => 'required|date_format:H:i:s',
+    //         'visit_minutes' => 'required|integer|min:15',
+    //         'visit_id' => 'required|integer|exists:visits,id',
+    //     ]);
 
-        try {
-            $service->reserveMultiSlot(
-                $request->doctor_id,
-                $request->date,
-                $request->start_time,
-                $request->visit_minutes,
-                $request->visit_id
-            );
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
-        }
+    //     try {
+    //         $service->reserveMultiSlot(
+    //             $request->doctor_id,
+    //             $request->date,
+    //             $request->start_time,
+    //             $request->visit_minutes,
+    //             $request->visit_id
+    //         );
+    //     } catch (\Exception $e) {
+    //         return response()->json(['error' => $e->getMessage()], 400);
+    //     }
 
-        return response()->json(['message' => 'Sloty zarezerwowane']);
-    }
+    //     return response()->json(['message' => 'Sloty zarezerwowane']);
+    // }
 
 
     public function getSlotsRange(Request $request)

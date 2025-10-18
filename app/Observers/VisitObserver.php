@@ -96,6 +96,7 @@ namespace App\Observers;
 use App\Models\Visit;
 use App\Services\DoctorSlotService;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class VisitObserver
 {
@@ -116,23 +117,37 @@ class VisitObserver
     {
         Log::info("VisitObserver UPDATED triggered for visit {$visit->id}");
 
-        // Sprawdzamy czy zmieniła się data, godzina lub lekarz
-        if ($visit->wasChanged(['date', 'start_time', 'end_time', 'doctor_id'])) {
+        // Sprawdzamy, czy zmieniła się data, godzina, duration lub lekarz
+        if ($visit->wasChanged(['date', 'start_time', 'duration', 'doctor_id'])) {
             Log::info("Visit {$visit->id} changed — updating slots");
 
-            // Zwolnij stare sloty
+            // 1️⃣ Zwolnij stare sloty (oryginalne wartości)
+            $oldDate     = $visit->getOriginal('date');
+            $oldStart    = $visit->getOriginal('start_time');
+            $oldDuration = $visit->getOriginal('duration') ?? 45;
+            $oldDoctorId = $visit->getOriginal('doctor_id');
+
+            $oldStartCarbon = Carbon::parse("{$oldDate} {$oldStart}");
+            $oldEndCarbon   = $oldStartCarbon->copy()->addMinutes($oldDuration);
+
             $oldVisit = new Visit([
-                'doctor_id'  => $visit->getOriginal('doctor_id'),
-                'date'       => $visit->getOriginal('date'),
-                'start_time' => $visit->getOriginal('start_time'),
-                'end_time'   => $visit->getOriginal('end_time'),
+                'doctor_id'  => $oldDoctorId,
+                'date'       => $oldDate,
+                'start_time' => $oldStart,
+                'end_time'   => $oldEndCarbon->format('H:i:s'),
             ]);
             $oldVisit->id = $visit->id;
 
             Log::info("Releasing old slots for visit {$visit->id}");
             $this->service->markAvailable($oldVisit);
 
-            // Zajmij nowe sloty
+            // 2️⃣ Zajmij nowe sloty
+            $newStartCarbon = Carbon::parse("{$visit->date} {$visit->start_time}");
+            $newEndCarbon   = $newStartCarbon->copy()->addMinutes($visit->duration ?? 45);
+
+            // Ustawiamy end_time w modelu, aby markReserved wiedział
+            $visit->end_time = $newEndCarbon->format('H:i:s');
+
             Log::info("Marking new reserved slots for visit {$visit->id}");
             $this->service->markReserved($visit);
         }
