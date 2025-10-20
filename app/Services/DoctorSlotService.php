@@ -575,7 +575,7 @@ class DoctorSlotService
     if ($slots->isNotEmpty()) {
         $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
             ->update([
-                'type' => 'unavailable', // możesz dodać nowy typ 'vacation'
+                'type' => 'vacation', // możesz dodać nowy typ 'vacation'
                 'visit_id' => null,
                 'updated_at' => now(),
             ]);
@@ -609,7 +609,7 @@ class DoctorSlotService
 
         $this->clearCache();
     }
-    
+
     private function clearCache(): void
     {
         Cache::flush();
