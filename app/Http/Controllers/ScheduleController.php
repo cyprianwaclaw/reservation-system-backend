@@ -268,7 +268,6 @@ class ScheduleController extends Controller
     }
 
 
-
 public function getVisitById($id)
 {
     // 1️⃣ Pobranie wizyty + użytkownika + lekarza
@@ -280,7 +279,7 @@ public function getVisitById($id)
 
     $user = $visit->user;
 
-    // 2️⃣ Poprzednie wizyty pacjenta (limit 5) – od najnowszej
+    // 2️⃣ Poprzednie wizyty pacjenta (limit 5) – od najnowszej do najstarszej
     $previousVisits = Visit::where('user_id', $user->id)
         ->where('date', '<', $visit->date)
         ->orderBy('date', 'desc')
@@ -295,11 +294,12 @@ public function getVisitById($id)
             ];
         });
 
-    // 3️⃣ Notatki zwykłe i szybkie w jednym query z joinem
+    // 3️⃣ Notatki zwykłe i szybkie od daty 05.09.2016 – od najnowszej wizyty
     $notesQuery = DB::table('visit_notes')
         ->leftJoin('visits', 'visit_notes.visit_id', '=', 'visits.id')
         ->leftJoin('doctors', 'visits.doctor_id', '=', 'doctors.id')
         ->where('visits.user_id', $user->id)
+        ->where('visits.date', '>=', '2016-09-05') // tylko od tej daty
         ->select(
             'visit_notes.id',
             'visit_notes.text',
@@ -312,10 +312,11 @@ public function getVisitById($id)
             'doctors.name as doctor_name',
             'doctors.surname as doctor_surname'
         )
-        ->orderBy('visit_notes.created_at', 'desc') // od najnowszej notatki
+        ->orderBy('visits.date', 'desc')      // od najnowszej wizyty
+        ->orderBy('visits.start_time', 'desc')
         ->get();
 
-    // Podział na zwykłe i szybkie notatki
+    // Zwykłe notatki
     $notes = $notesQuery->where('is_edit', false)->map(function ($note) {
         return [
             'text' => $note->text,
@@ -332,7 +333,8 @@ public function getVisitById($id)
         ];
     });
 
-    $fast_note_model = $notesQuery->where('is_edit', true)->first(); // od najnowszej
+    // Szybka notatka – najnowsza
+    $fast_note_model = $notesQuery->where('is_edit', true)->first();
     $fast_note = $fast_note_model ? [
         'note_date' => Carbon::parse($fast_note_model->created_at)->format('d.m.Y H:i'),
         'text' => $fast_note_model->text,
