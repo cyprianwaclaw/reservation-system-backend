@@ -562,6 +562,54 @@ class DoctorSlotService
         $this->clearCache();
     }
 
+    public function markVacation(int $doctorId, string $date, string $startTime, string $endTime): void
+{
+    Log::info("Blocking slots for doctor $doctorId on $date from $startTime to $endTime");
+
+    $slots = DoctorSlot::where('doctor_id', $doctorId)
+        ->where('date', $date)
+        ->where('end_time', '>', $startTime)
+        ->where('start_time', '<', $endTime)
+        ->get();
+
+    if ($slots->isNotEmpty()) {
+        $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
+            ->update([
+                'type' => 'unavailable', // możesz dodać nowy typ 'vacation'
+                'visit_id' => null,
+                'updated_at' => now(),
+            ]);
+
+        Log::info("Updated {$updated} slots to unavailable due to vacation");
+    }
+
+    $this->clearCache();
+}
+
+    public function releaseVacationSlots(int $doctorId, string $date, string $startTime, string $endTime): void
+    {
+        Log::info("Releasing vacation slots for doctor $doctorId on $date");
+
+        $slots = DoctorSlot::where('doctor_id', $doctorId)
+            ->where('date', $date)
+            ->where('end_time', '>', $startTime)
+            ->where('start_time', '<', $endTime)
+            ->get();
+
+        if ($slots->isNotEmpty()) {
+            $updated = DoctorSlot::whereIn('id', $slots->pluck('id'))
+                ->update([
+                    'type' => 'available',
+                    'visit_id' => null,
+                    'updated_at' => now(),
+                ]);
+
+            Log::info("Updated {$updated} slots to available after vacation deletion");
+        }
+
+        $this->clearCache();
+    }
+    
     private function clearCache(): void
     {
         Cache::flush();
