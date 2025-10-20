@@ -269,101 +269,102 @@ class ScheduleController extends Controller
 
 
 
-    public function getVisitById($id)
-    {
-        // 1️⃣ Pobranie wizyty + użytkownika + lekarza
-        $visit = Visit::with(['doctor', 'user'])->find($id);
+public function getVisitById($id)
+{
+    // 1️⃣ Pobranie wizyty + użytkownika + lekarza
+    $visit = Visit::with(['doctor', 'user'])->find($id);
 
-        if (!$visit) {
-            return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
-        }
+    if (!$visit) {
+        return response()->json(['error' => 'Nie znaleziono wizyty'], 404);
+    }
 
-        $user = $visit->user;
+    $user = $visit->user;
 
-        // 2️⃣ Poprzednie wizyty pacjenta (limit 5)
-        $previousVisits = Visit::where('user_id', $user->id)
-            ->where('date', '<', $visit->date)
-            ->orderBy('date', 'desc')
-            ->limit(5)
-            ->get(['id', 'date', 'start_time', 'end_time'])
-            ->map(function ($v) {
-                return [
-                    'full_date' => Carbon::parse($v->date)->format('d.m.Y') .
-                        ', ' . Carbon::parse($v->start_time)->format('H:i') .
-                        ' - ' . Carbon::parse($v->end_time)->format('H:i'),
-                ];
-            });
-
-        // 3️⃣ Notatki zwykłe i szybkie w jednym query z joinem
-        $notesQuery = DB::table('visit_notes')
-            ->leftJoin('visits', 'visit_notes.visit_id', '=', 'visits.id')
-            ->leftJoin('doctors', 'visits.doctor_id', '=', 'doctors.id')
-            ->where('visits.user_id', $user->id)
-            ->select(
-                'visit_notes.id',
-                'visit_notes.text',
-                'visit_notes.attachments',
-                'visit_notes.is_edit',
-                'visit_notes.created_at',
-                'visits.date as visit_date',
-                'visits.start_time',
-                'visits.end_time',
-                'doctors.name as doctor_name',
-                'doctors.surname as doctor_surname'
-            )
-            ->orderBy('visit_notes.created_at')
-            ->get();
-
-        // Podział na zwykłe i szybkie notatki
-        $notes = $notesQuery->where('is_edit', false)->map(function ($note) {
+    // 2️⃣ Poprzednie wizyty pacjenta (limit 5) – od najnowszej
+    $previousVisits = Visit::where('user_id', $user->id)
+        ->where('date', '<', $visit->date)
+        ->orderBy('date', 'desc')
+        ->orderBy('start_time', 'desc')
+        ->limit(5)
+        ->get(['id', 'date', 'start_time', 'end_time'])
+        ->map(function ($v) {
             return [
-                'text' => $note->text,
-                'attachments' => json_decode($note->attachments, true) ?? [],
-                'visit_details' => $note->visit_date ? [
-                    'date' => Carbon::parse($note->visit_date)->format('d.m.Y'),
-                    'start_time' => Carbon::parse($note->start_time)->format('H:i'),
-                    'end_time' => Carbon::parse($note->end_time)->format('H:i'),
-                    'doctor' => $note->doctor_name ? [
-                        'name' => $note->doctor_name,
-                        'surname' => $note->doctor_surname,
-                    ] : null
-                ] : null
+                'full_date' => Carbon::parse($v->date)->format('d.m.Y') .
+                    ', ' . Carbon::parse($v->start_time)->format('H:i') .
+                    ' - ' . Carbon::parse($v->end_time)->format('H:i'),
             ];
         });
 
-        $fast_note_model = $notesQuery->where('is_edit', true)->last();
-        $fast_note = $fast_note_model ? [
-            'note_date' => Carbon::parse($fast_note_model->created_at)->format('d.m.Y H:i'),
-            'text' => $fast_note_model->text,
-        ] : null;
+    // 3️⃣ Notatki zwykłe i szybkie w jednym query z joinem
+    $notesQuery = DB::table('visit_notes')
+        ->leftJoin('visits', 'visit_notes.visit_id', '=', 'visits.id')
+        ->leftJoin('doctors', 'visits.doctor_id', '=', 'doctors.id')
+        ->where('visits.user_id', $user->id)
+        ->select(
+            'visit_notes.id',
+            'visit_notes.text',
+            'visit_notes.attachments',
+            'visit_notes.is_edit',
+            'visit_notes.created_at',
+            'visits.date as visit_date',
+            'visits.start_time',
+            'visits.end_time',
+            'doctors.name as doctor_name',
+            'doctors.surname as doctor_surname'
+        )
+        ->orderBy('visit_notes.created_at', 'desc') // od najnowszej notatki
+        ->get();
 
-        // 4️⃣ Zwracamy dane
-        return response()->json([
-            'current_visit' => [
-                'id' => $visit->id,
-                'type' => $visit->type,
-                'date' => Carbon::parse($visit->date)->format('d.m.Y'),
-                'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
-                'end_time' => Carbon::parse($visit->end_time)->format('H:i'),
-            ],
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'surname' => $user->surname,
-                'email' => $user->email,
-                'phone' => $user->phone,
-                'age' => $user->age_with_suffix,
-                'description' => $user->opis,
-                'type' => $user->rodzaj_pacjenta,
-            ],
-            'date' => $visit->date,
-            'start_time' => $visit->start_time,
-            'end_time' => $visit->end_time,
-            'notes' => $notes,
-            'fast_note' => $fast_note,
-            'previous_visits' => $previousVisits,
-        ]);
-    }
+    // Podział na zwykłe i szybkie notatki
+    $notes = $notesQuery->where('is_edit', false)->map(function ($note) {
+        return [
+            'text' => $note->text,
+            'attachments' => json_decode($note->attachments, true) ?? [],
+            'visit_details' => $note->visit_date ? [
+                'date' => Carbon::parse($note->visit_date)->format('d.m.Y'),
+                'start_time' => Carbon::parse($note->start_time)->format('H:i'),
+                'end_time' => Carbon::parse($note->end_time)->format('H:i'),
+                'doctor' => $note->doctor_name ? [
+                    'name' => $note->doctor_name,
+                    'surname' => $note->doctor_surname,
+                ] : null
+            ] : null
+        ];
+    });
+
+    $fast_note_model = $notesQuery->where('is_edit', true)->first(); // od najnowszej
+    $fast_note = $fast_note_model ? [
+        'note_date' => Carbon::parse($fast_note_model->created_at)->format('d.m.Y H:i'),
+        'text' => $fast_note_model->text,
+    ] : null;
+
+    // 4️⃣ Zwracamy dane
+    return response()->json([
+        'current_visit' => [
+            'id' => $visit->id,
+            'type' => $visit->type,
+            'date' => Carbon::parse($visit->date)->format('d.m.Y'),
+            'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
+            'end_time' => Carbon::parse($visit->end_time)->format('H:i'),
+        ],
+        'user' => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'surname' => $user->surname,
+            'email' => $user->email,
+            'phone' => $user->phone,
+            'age' => $user->age_with_suffix,
+            'description' => $user->opis,
+            'type' => $user->rodzaj_pacjenta,
+        ],
+        'date' => $visit->date,
+        'start_time' => $visit->start_time,
+        'end_time' => $visit->end_time,
+        'notes' => $notes,
+        'fast_note' => $fast_note,
+        'previous_visits' => $previousVisits,
+    ]);
+}
 
 
     public function getVisitById1($id)
