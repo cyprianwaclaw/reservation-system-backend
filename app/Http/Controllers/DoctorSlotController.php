@@ -280,7 +280,10 @@ class DoctorSlotController extends Controller
 
     //     return response()->json($groupedByDateDoctor);
     // }
-    public function getSlotsRange(Request $request)
+
+
+
+   public function getSlotsRange(Request $request)
     {
         $validated = $request->validate([
             'doctor_id' => 'nullable|integer|exists:doctors,id',
@@ -317,13 +320,13 @@ class DoctorSlotController extends Controller
         });
 
         // 🔹 Scalanie slotów dla jednej wizyty
-        $grouped = $slots->groupBy(fn($slot) => $slot->visit_id ?: 'free');
+        $groupedByVisit = $slots->groupBy(fn($slot) => $slot->visit_id ?: 'free');
 
-        $merged = $grouped->flatMap(function ($group, $key) {
+        $mergedSlots = $groupedByVisit->flatMap(function ($group, $key) {
             if ($key !== 'free' && $group->count() > 0) {
                 return [[
                     'doctor_id' => $group->first()->doctor_id,
-                    'date' => $group->first()->date,
+                    'date' => Carbon::parse($group->first()->date)->format('Y-m-d'),
                     'start_time' => Carbon::parse($group->min('start_time'))->format('H:i'),
                     'end_time' => Carbon::parse($group->max('end_time'))->format('H:i'),
                     'type' => 'reserved',
@@ -343,8 +346,30 @@ class DoctorSlotController extends Controller
             });
         })->sortBy(['date', 'start_time'])->values();
 
-        return response()->json($merged);
+        // 🔹 Grupowanie slotów po dacie i doktorze
+        $groupedByDateDoctor = $mergedSlots->groupBy(function ($slot) {
+            return $slot['date'] . '|' . $slot['doctor_id'];
+        })->map(function ($slotsForDoctor) {
+            $allDayFree = $slotsForDoctor->every(fn($slot) => $slot['type'] === 'available');
+
+            return [
+                'doctor_id' => $slotsForDoctor->first()['doctor_id'],
+                'date' => $slotsForDoctor->first()['date'],
+                'all_day_free' => $allDayFree,
+                'slots' => $slotsForDoctor->map(fn($slot) => [
+                    'date' => $slot['date'],
+                    'start_time' => $slot['start_time'],
+                    'end_time' => $slot['end_time'],
+                    'type' => $slot['type'],
+                    'visit_id' => $slot['visit_id'],
+                ])->values(),
+            ];
+        })->values();
+
+        return response()->json($groupedByDateDoctor);
     }
+
+
 
   // Endpoint do „rollowania” slotów – usuwa dzisiejsze i generuje na kolejny dzień
 public function rollTodaySlots(DoctorSlotService $slotService)
