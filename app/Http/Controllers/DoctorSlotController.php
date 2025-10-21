@@ -78,8 +78,8 @@ class DoctorSlotController extends Controller
 
     //     return response()->json(['message' => 'Sloty zarezerwowane']);
     // }
-    
-    public function getSlotsRange(Request $request)
+
+    public function getSlotsRangeTest(Request $request)
     {
         $validated = $request->validate([
             'doctor_id' => 'nullable|integer|exists:doctors,id',
@@ -280,71 +280,71 @@ class DoctorSlotController extends Controller
 
     //     return response()->json($groupedByDateDoctor);
     // }
-    // public function getSlotsRange(Request $request)
-    // {
-    //     $validated = $request->validate([
-    //         'doctor_id' => 'nullable|integer|exists:doctors,id',
-    //         'from' => 'required|date',
-    //         'to' => 'required|date|after_or_equal:from',
-    //         'type' => 'nullable|in:available,reserved,vacation,all',
-    //     ]);
+    public function getSlotsRange(Request $request)
+    {
+        $validated = $request->validate([
+            'doctor_id' => 'nullable|integer|exists:doctors,id',
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'type' => 'nullable|in:available,reserved,vacation,all',
+        ]);
 
-    //     $doctorId = $validated['doctor_id'] ?? null;
-    //     $from = Carbon::parse($validated['from'])->toDateString();
-    //     $to = Carbon::parse($validated['to'])->toDateString();
-    //     $type = $validated['type'] ?? 'all';
+        $doctorId = $validated['doctor_id'] ?? null;
+        $from = Carbon::parse($validated['from'])->toDateString();
+        $to = Carbon::parse($validated['to'])->toDateString();
+        $type = $validated['type'] ?? 'all';
 
-    //     $cacheKey = "slots:{$doctorId}:{$from}:{$to}:{$type}";
+        $cacheKey = "slots:{$doctorId}:{$from}:{$to}:{$type}";
 
-    //     $slots = Cache::remember($cacheKey, 60, function () use ($doctorId, $from, $to, $type) {
-    //         $query = \App\Models\DoctorSlot::query()
-    //             ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
-    //             ->whereDate('date', '>=', $from)
-    //             ->whereDate('date', '<=', $to);
+        $slots = Cache::remember($cacheKey, 60, function () use ($doctorId, $from, $to, $type) {
+            $query = \App\Models\DoctorSlot::query()
+                ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
+                ->whereDate('date', '>=', $from)
+                ->whereDate('date', '<=', $to);
 
-    //         if ($doctorId) {
-    //             $query->where('doctor_id', $doctorId);
-    //         }
+            if ($doctorId) {
+                $query->where('doctor_id', $doctorId);
+            }
 
-    //         if ($type !== 'all') {
-    //             $query->where('type', $type);
-    //         }
+            if ($type !== 'all') {
+                $query->where('type', $type);
+            }
 
-    //         return $query
-    //             ->orderBy('date')
-    //             ->orderBy('start_time')
-    //             ->get();
-    //     });
+            return $query
+                ->orderBy('date')
+                ->orderBy('start_time')
+                ->get();
+        });
 
-    //     // 🔹 Scalanie slotów dla jednej wizyty
-    //     $grouped = $slots->groupBy(fn($slot) => $slot->visit_id ?: 'free');
+        // 🔹 Scalanie slotów dla jednej wizyty
+        $grouped = $slots->groupBy(fn($slot) => $slot->visit_id ?: 'free');
 
-    //     $merged = $grouped->flatMap(function ($group, $key) {
-    //         if ($key !== 'free' && $group->count() > 0) {
-    //             return [[
-    //                 'doctor_id' => $group->first()->doctor_id,
-    //                 'date' => $group->first()->date,
-    //                 'start_time' => Carbon::parse($group->min('start_time'))->format('H:i'),
-    //                 'end_time' => Carbon::parse($group->max('end_time'))->format('H:i'),
-    //                 'type' => 'reserved',
-    //                 'visit_id' => $key,
-    //             ]];
-    //         }
+        $merged = $grouped->flatMap(function ($group, $key) {
+            if ($key !== 'free' && $group->count() > 0) {
+                return [[
+                    'doctor_id' => $group->first()->doctor_id,
+                    'date' => $group->first()->date,
+                    'start_time' => Carbon::parse($group->min('start_time'))->format('H:i'),
+                    'end_time' => Carbon::parse($group->max('end_time'))->format('H:i'),
+                    'type' => 'reserved',
+                    'visit_id' => $key,
+                ]];
+            }
 
-    //         return $group->map(function ($slot) {
-    //             return [
-    //                 'doctor_id' => $slot->doctor_id,
-    //                 'date' => Carbon::parse($slot->date)->format('Y-m-d'),
-    //                 'start_time' => Carbon::parse($slot->start_time)->format('H:i'),
-    //                 'end_time' => Carbon::parse($slot->end_time)->format('H:i'),
-    //                 'type' => $slot->type,
-    //                 'visit_id' => $slot->visit_id,
-    //             ];
-    //         });
-    //     })->sortBy(['date', 'start_time'])->values();
+            return $group->map(function ($slot) {
+                return [
+                    'doctor_id' => $slot->doctor_id,
+                    'date' => Carbon::parse($slot->date)->format('Y-m-d'),
+                    'start_time' => Carbon::parse($slot->start_time)->format('H:i'),
+                    'end_time' => Carbon::parse($slot->end_time)->format('H:i'),
+                    'type' => $slot->type,
+                    'visit_id' => $slot->visit_id,
+                ];
+            });
+        })->sortBy(['date', 'start_time'])->values();
 
-    //     return response()->json($merged);
-    // }
+        return response()->json($merged);
+    }
 
   // Endpoint do „rollowania” slotów – usuwa dzisiejsze i generuje na kolejny dzień
 public function rollTodaySlots(DoctorSlotService $slotService)
