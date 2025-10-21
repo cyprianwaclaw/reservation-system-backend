@@ -26,7 +26,7 @@ class UpdatePatientRequest extends FormRequest
                 'regex:/^[A-ZĄĆĘŁŃÓŚŻŹ][a-ząćęłńóśżź]+(?:[-\s][A-ZĄĆĘŁŃÓŚŻŹ]?[a-ząćęłńóśżź]+)*$/u'
             ],
 'surname' => [
-    'required',
+    'nullable',
     'string',
     'max:255',
     'regex:/^[A-ZĄĆĘŁŃÓŚŻŹ][a-ząćęłńóśżź]+([-\s][A-ZĄĆĘŁŃÓŚŻŹ]?[a-ząćęłńóśżź]+)*\s*(I|II|III|IV|V|VI|VII|VIII|IX|X)?$/u'
