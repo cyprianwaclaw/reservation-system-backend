@@ -1653,6 +1653,28 @@ public function getVisitById($id)
     {
         $user = User::findOrFail($id);
 
+$visits = $user->visits()
+            ->with('doctor')
+            ->get()
+            ->map(function ($visit) {
+                return [
+                    // 'id'         => $visit->id,
+                    // 'doctor_id'  => $visit->doctor_id,
+                    // 'user_id'    => $visit->user_id,
+                    'date' => Carbon::parse($visit->date)->format('d.m.Y'),
+                    // 'start_time' => Carbon::parse($visit->start_time)->format('H:i'),
+                    // 'end_time'   => Carbon::parse($visit->end_time)->format('H:i'),
+                    // 'created_at' => $visit->created_at,
+                    // 'updated_at' => $visit->updated_at,
+                    'doctor'     => $visit->doctor ? [
+                        // 'id'      => $visit->doctor->id,
+                        'name'    => $visit->doctor->name,
+                        'surname' => $visit->doctor->surname,
+                        // 'email'   => $visit->doctor->email
+                    ] : null
+                ];
+            });
+
         $notes = $user->notes()
             ->get()
             ->where('is_edit', false)
@@ -1700,7 +1722,7 @@ public function getVisitById($id)
             'age'   => $user->age_with_suffix,
             'description'   => $user->opis,
             'patient_type'   => $user->rodzaj_pacjenta,
-            // 'visits'  => $visits,
+            'allVisits'  => $visits,
             'visits'   => $notes
         ]);
     }
