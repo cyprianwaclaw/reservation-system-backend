@@ -1575,13 +1575,17 @@ public function getVisitById($id)
             $second = $parts[1] ?? '';
 
             $query->where(function ($q) use ($first, $second, $search) {
+                $likeSearch = "%{$search}%";
+                $likeFirst = "%{$first}%";
+                $likeSecond = "%{$second}%";
+
                 if ($second) {
-                    $q->where('name', 'like', "{$first}%")
-                        ->where('surname', 'like', "{$second}%");
+                    $q->whereRaw('LOWER(name) LIKE ?', [mb_strtolower($likeFirst)])
+                        ->whereRaw('LOWER(surname) LIKE ?', [mb_strtolower($likeSecond)]);
                 } else {
-                    $q->where('name', 'like', "{$search}%")
-                        ->orWhere('surname', 'like', "{$search}%")
-                        ->orWhere('phone', 'like', "{$search}%");
+                    $q->whereRaw('LOWER(name) LIKE ?', [mb_strtolower($likeSearch)])
+                        ->orWhereRaw('LOWER(surname) LIKE ?', [mb_strtolower($likeSearch)])
+                        ->orWhereRaw('LOWER(phone) LIKE ?', [mb_strtolower($likeSearch)]);
                 }
             });
         }
