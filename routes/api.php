@@ -14,7 +14,8 @@ Route::post('/slots/reserve', [DoctorSlotController::class, 'reserve']);
 Route::post('/slots/free', [DoctorSlotController::class, 'free']);
 Route::post('/slots/reserve-multi', [DoctorSlotController::class, 'reserveMulti']);
 // Route::get('/slots', [DoctorSlotController::class, 'getSlots']);
-Route::get('/slots/range', [DoctorSlotController::class, 'getSlotsRange']);
+Route::get('/slots/range', [DoctorSlotController::class, 'getSlotsRangeTest']);
+Route::get('/slots/rangeTest', [DoctorSlotController::class, 'getSlotsRangeTest']);
 
 
 
@@ -24,19 +25,19 @@ Route::get('/slots/range', [DoctorSlotController::class, 'getSlotsRange']);
 
 
 
-Route::prefix('availability')->group(function () {
-    Route::get('/days/{start_date?}/{days_ahead?}', [ScheduleController::class, 'getAvailableDaysNew'])
-        ->where([
-            'start_date' => '\d{4}-\d{2}-\d{2}',   // YYYY-MM-DD
-            'days_ahead' => '\d{1,2}',            // 1..60
-        ]); // [web:60][web:66]
+// Route::prefix('availability')->group(function () {
+//     Route::get('/days/{start_date?}/{days_ahead?}', [ScheduleController::class, 'getAvailableDaysNew'])
+//         ->where([
+//             'start_date' => '\d{4}-\d{2}-\d{2}',   // YYYY-MM-DD
+//             'days_ahead' => '\d{1,2}',            // 1..60
+//         ]); // [web:60][web:66]
 
-    Route::get('/date/{date}/doctors', [ScheduleController::class, 'getDoctorsForDate'])
-        ->where('date', '\d{4}-\d{2}-\d{2}'); // [web:60][web:66]
+//     Route::get('/date/{date}/doctors', [ScheduleController::class, 'getDoctorsForDate'])
+//         ->where('date', '\d{4}-\d{2}-\d{2}'); // [web:60][web:66]
 
-    Route::get('/doctor/{doctor}/date/{date}/slots', [ScheduleController::class, 'getDoctorSlots'])
-        ->where('date', '\d{4}-\d{2}-\d{2}'); // [web:60][web:66]
-});
+//     Route::get('/doctor/{doctor}/date/{date}/slots', [ScheduleController::class, 'getDoctorSlots'])
+//         ->where('date', '\d{4}-\d{2}-\d{2}'); // [web:60][web:66]
+// });
 
 
 Route::get('/available-days', [ScheduleController::class, 'getAvailableDays']);

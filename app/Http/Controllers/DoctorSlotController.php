@@ -79,123 +79,7 @@ class DoctorSlotController extends Controller
     //     return response()->json(['message' => 'Sloty zarezerwowane']);
     // }
 
-    public function getSlotsRangeTest(Request $request)
-    {
-        $validated = $request->validate([
-            'doctor_id' => 'nullable|integer|exists:doctors,id',
-            'from' => 'required|date',
-            'to' => 'required|date|after_or_equal:from',
-            'type' => 'nullable|in:available,reserved,vacation,all',
-        ]);
-
-        $doctorId = $validated['doctor_id'] ?? null;
-        $from = Carbon::parse($validated['from'])->toDateString();
-        $to = Carbon::parse($validated['to'])->toDateString();
-        $type = $validated['type'] ?? 'all';
-
-        $cacheKey = "slots:{$doctorId}:{$from}:{$to}:{$type}";
-
-        $slots = Cache::remember($cacheKey, 60, function () use ($doctorId, $from, $to, $type) {
-            $query = \App\Models\DoctorSlot::query()
-                ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
-                ->whereDate('date', '>=', $from)
-                ->whereDate('date', '<=', $to);
-
-            if ($doctorId) {
-                $query->where('doctor_id', $doctorId);
-            }
-
-            if ($type !== 'all') {
-                $query->where('type', $type);
-            }
-
-            return $query
-                ->orderBy('date')
-                ->orderBy('start_time')
-                ->get();
-        });
-
-        // 🔹 Pobierz grafiki pracy (tygodniowe)
-        $schedules = \App\Models\Schedule::query()
-            ->when($doctorId, fn($q) => $q->where('doctor_id', $doctorId))
-            ->get()
-            ->groupBy(fn($s) => $s->doctor_id . '|' . $s->day_of_week);
-
-        // 🔹 Filtrowanie slotów wg dnia tygodnia i godzin pracy
-        $slots = $slots->filter(function ($slot) use ($schedules) {
-            $dayOfWeek = Carbon::parse($slot->date)->dayOfWeekIso; // pon=1, ndz=7
-            $key = $slot->doctor_id . '|' . $dayOfWeek;
-            $doctorSchedules = $schedules[$key] ?? collect();
-
-            // Jeśli brak grafiku na ten dzień — slot nie jest dostępny
-            if ($doctorSchedules->isEmpty()) {
-                return false;
-            }
-
-            // Sprawdź, czy slot mieści się w którejś zmianie
-            foreach ($doctorSchedules as $schedule) {
-                if (
-                    $slot->start_time >= $schedule->start_time &&
-                    $slot->end_time <= $schedule->end_time
-                ) {
-                    return true; // slot mieści się w grafiku
-                }
-            }
-
-            return false; // poza godzinami pracy
-        })->values();
-
-        // 🔹 Scalanie slotów dla jednej wizyty
-        $groupedByVisit = $slots->groupBy(fn($slot) => $slot->visit_id ?: 'free');
-
-        $mergedSlots = $groupedByVisit->flatMap(function ($group, $key) {
-            if ($key !== 'free' && $group->count() > 0) {
-                return [[
-                    'doctor_id' => $group->first()->doctor_id,
-                    'date' => Carbon::parse($group->first()->date)->format('Y-m-d'),
-                    'start_time' => Carbon::parse($group->min('start_time'))->format('H:i'),
-                    'end_time' => Carbon::parse($group->max('end_time'))->format('H:i'),
-                    'type' => 'reserved',
-                    'visit_id' => $key,
-                ]];
-            }
-
-            return $group->map(function ($slot) {
-                return [
-                    'doctor_id' => $slot->doctor_id,
-                    'date' => Carbon::parse($slot->date)->format('Y-m-d'),
-                    'start_time' => Carbon::parse($slot->start_time)->format('H:i'),
-                    'end_time' => Carbon::parse($slot->end_time)->format('H:i'),
-                    'type' => $slot->type,
-                    'visit_id' => $slot->visit_id,
-                ];
-            });
-        })->sortBy(['date', 'start_time'])->values();
-
-        // 🔹 Grupowanie slotów po dacie i doktorze
-        $groupedByDateDoctor = $mergedSlots->groupBy(function ($slot) {
-            return $slot['date'] . '|' . $slot['doctor_id'];
-        })->map(function ($slotsForDoctor) {
-            $allDayFree = $slotsForDoctor->every(fn($slot) => $slot['type'] === 'available');
-
-            return [
-                'doctor_id' => $slotsForDoctor->first()['doctor_id'],
-                'date' => $slotsForDoctor->first()['date'],
-                'all_day_free' => $allDayFree,
-                'slots' => $slotsForDoctor->map(fn($slot) => [
-                    'date' => $slot['date'],
-                    'start_time' => $slot['start_time'],
-                    'end_time' => $slot['end_time'],
-                    'type' => $slot['type'],
-                    'visit_id' => $slot['visit_id'],
-                ])->values(),
-            ];
-        })->values();
-
-        return response()->json($groupedByDateDoctor);
-    }
-
-    // public function getSlotsRange(Request $request)
+    // public function getSlotsRangeTest(Request $request)
     // {
     //     $validated = $request->validate([
     //         'doctor_id' => 'nullable|integer|exists:doctors,id',
@@ -230,6 +114,36 @@ class DoctorSlotController extends Controller
     //             ->orderBy('start_time')
     //             ->get();
     //     });
+
+    //     // 🔹 Pobierz grafiki pracy (tygodniowe)
+    //     $schedules = \App\Models\Schedule::query()
+    //         ->when($doctorId, fn($q) => $q->where('doctor_id', $doctorId))
+    //         ->get()
+    //         ->groupBy(fn($s) => $s->doctor_id . '|' . $s->day_of_week);
+
+    //     // 🔹 Filtrowanie slotów wg dnia tygodnia i godzin pracy
+    //     $slots = $slots->filter(function ($slot) use ($schedules) {
+    //         $dayOfWeek = Carbon::parse($slot->date)->dayOfWeekIso; // pon=1, ndz=7
+    //         $key = $slot->doctor_id . '|' . $dayOfWeek;
+    //         $doctorSchedules = $schedules[$key] ?? collect();
+
+    //         // Jeśli brak grafiku na ten dzień — slot nie jest dostępny
+    //         if ($doctorSchedules->isEmpty()) {
+    //             return false;
+    //         }
+
+    //         // Sprawdź, czy slot mieści się w którejś zmianie
+    //         foreach ($doctorSchedules as $schedule) {
+    //             if (
+    //                 $slot->start_time >= $schedule->start_time &&
+    //                 $slot->end_time <= $schedule->end_time
+    //             ) {
+    //                 return true; // slot mieści się w grafiku
+    //             }
+    //         }
+
+    //         return false; // poza godzinami pracy
+    //     })->values();
 
     //     // 🔹 Scalanie slotów dla jednej wizyty
     //     $groupedByVisit = $slots->groupBy(fn($slot) => $slot->visit_id ?: 'free');
@@ -282,8 +196,134 @@ class DoctorSlotController extends Controller
     // }
 
 
+public function getSlotsRangeTest(Request $request)
+{
+    $validated = $request->validate([
+        'doctor_id' => 'nullable|integer|exists:doctors,id',
+        'from' => 'required|date',
+        'to' => 'required|date|after_or_equal:from',
+        'type' => 'nullable|in:available,reserved,vacation,all',
+    ]);
 
-   public function getSlotsRange(Request $request)
+    $doctorId = $validated['doctor_id'] ?? null;
+
+    // 🔹 Pobierz grafiki pracy (doctor_working_hours)
+    $workingHours = \App\Models\DoctorWorkingHour::query()
+        ->when($doctorId, fn($q) => $q->where('doctor_id', $doctorId))
+        ->get()
+        ->groupBy(fn($h) => $h->doctor_id . '|' . $h->day_of_week);
+
+    $from = Carbon::parse($validated['from'])->toDateString();
+    $to = Carbon::parse($validated['to'])->toDateString();
+    $type = $validated['type'] ?? 'all';
+
+    $cacheKey = "slots:{$doctorId}:{$from}:{$to}:{$type}";
+
+    $slots = Cache::remember($cacheKey, 60, function () use ($doctorId, $from, $to, $type) {
+        $query = \App\Models\DoctorSlot::query()
+            ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
+            ->whereDate('date', '>=', $from)
+            ->whereDate('date', '<=', $to);
+
+        if ($doctorId) {
+            $query->where('doctor_id', $doctorId);
+        }
+
+        if ($type !== 'all') {
+            $query->where('type', $type);
+        }
+
+        return $query
+            ->orderBy('date')
+            ->orderBy('start_time')
+            ->get();
+    });
+
+    // 🔹 Wygeneruj sloty z grafików (DoctorWorkingHour)
+    $generatedSlots = collect();
+    $dates = \Carbon\CarbonPeriod::create($from, $to);
+
+    foreach ($dates as $date) {
+        $dayOfWeek = $date->dayOfWeekIso; // 1=pon, 7=niedz
+        $doctors = $doctorId ? [$doctorId] : \App\Models\Doctor::pluck('id');
+
+        foreach ($doctors as $id) {
+            $schedule = $workingHours->get($id . '|' . $dayOfWeek)?->first();
+            if (!$schedule) continue;
+
+            $start = Carbon::parse($schedule->start_time);
+            $end = Carbon::parse($schedule->end_time);
+            $duration = 45; // minuty
+
+            while ($start < $end) {
+                $slotEnd = (clone $start)->addMinutes($duration);
+                if ($slotEnd > $end) break;
+
+                $generatedSlots->push([
+                    'doctor_id' => $id,
+                    'date' => $date->format('Y-m-d'),
+                    'start_time' => $start->format('H:i'),
+                    'end_time' => $slotEnd->format('H:i'),
+                    'type' => 'available',
+                    'visit_id' => null,
+                ]);
+
+                $start->addMinutes($duration);
+            }
+        }
+    }
+
+    // 🔹 Połącz istniejące sloty (z bazy) i wygenerowane (z grafiku)
+    $allSlots = $generatedSlots->merge($slots);
+
+    // 🔹 Scalanie slotów dla jednej wizyty
+    $groupedByVisit = $allSlots->groupBy(fn($slot) => $slot['visit_id'] ?: 'free');
+
+    $mergedSlots = $groupedByVisit->flatMap(function ($group, $key) {
+        if ($key !== 'free' && $group->count() > 0) {
+            return [[
+                'doctor_id' => $group->first()['doctor_id'],
+                'date' => Carbon::parse($group->first()['date'])->format('Y-m-d'),
+                'start_time' => Carbon::parse($group->min('start_time'))->format('H:i'),
+                'end_time' => Carbon::parse($group->max('end_time'))->format('H:i'),
+                'type' => 'reserved',
+                'visit_id' => $key,
+            ]];
+        }
+
+        return $group->map(function ($slot) {
+            return [
+                'doctor_id' => $slot['doctor_id'],
+                'date' => $slot['date'],
+                'start_time' => $slot['start_time'],
+                'end_time' => $slot['end_time'],
+                'type' => $slot['type'],
+                'visit_id' => $slot['visit_id'],
+            ];
+        });
+    })->sortBy(['date', 'start_time'])->values();
+
+    // 🔹 Grupowanie slotów po dacie i doktorze
+    $groupedByDateDoctor = $mergedSlots->groupBy(function ($slot) {
+        return $slot['date'] . '|' . $slot['doctor_id'];
+    })->map(function ($slotsForDoctor) use ($workingHours) {
+        $allDayFree = $slotsForDoctor->every(fn($slot) => $slot['type'] === 'available');
+
+        return [
+            'doctor_id' => $slotsForDoctor->first()['doctor_id'],
+            // 'schedules' => $workingHours,
+            'date' => $slotsForDoctor->first()['date'],
+            'all_day_free' => $allDayFree,
+            'slots' => $slotsForDoctor->values(),
+        ];
+    })->values();
+
+    return response()->json($groupedByDateDoctor);
+}
+
+
+
+    public function getSlotsRange(Request $request)
     {
         $validated = $request->validate([
             'doctor_id' => 'nullable|integer|exists:doctors,id',
