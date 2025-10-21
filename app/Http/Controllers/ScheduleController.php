@@ -1655,6 +1655,7 @@ public function getVisitById($id)
 
 $visits = $user->visits()
             ->with('doctor')
+            ->orderBy('date', 'desc')          // sortujemy po dacie malejąco
             ->get()
             ->map(function ($visit) {
                 return [
