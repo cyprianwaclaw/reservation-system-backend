@@ -26,7 +26,7 @@ class StorePatientRequest extends FormRequest
                 'required',
                 'string',
                 'max:255',
-                'regex:/^[A-ZĄĆĘŁŃÓŚŻŹ][a-ząćęłńóśżź]+(?:[-\s][A-ZĄĆĘŁŃÓŚŻŹ]?[a-ząćęłńóśżź]+)*$/u'
+                'regex:/^[A-ZĄĆĘŁŃÓŚŻŹ][a-ząćęłńóśżź]+([-\s][A-ZĄĆĘŁŃÓŚŻŹ][a-ząćęłńóśżź]+)*$/u'
             ],
             'phone' => ['nullable', 'regex:/^\d{9}$/', 'unique:users,phone'],
             'email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
