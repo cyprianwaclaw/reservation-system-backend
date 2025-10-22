@@ -21,7 +21,12 @@ class NewVisitRequest extends FormRequest
         return [
             'doctor_id'   => 'required|exists:doctors,id',
             'name'        => ['required', 'string', 'max:40', 'regex:/^[A-ZŁŚĆŻŹÓĘĄ][a-ząćęłńóśżź-]*$/u'],
-            'surname'     => ['required', 'string', 'max:40', 'regex:/^[A-ZŁŚĆŻŹÓĘĄ][a-ząćęłńóśżź-]*$/u'],
+          'surname' => [
+    'nullable',
+    'string',
+    'max:255',
+    'regex:/^[A-ZĄĆĘŁŃÓŚŻŹ][a-ząćęłńóśżź]+([-\s][A-ZĄĆĘŁŃÓŚŻŹ]?[a-ząćęłńóśżź]+)*\s*(I|II|III|IV|V|VI|VII|VIII|IX|X)?$/u'
+],
             'phone'       => ['nullable', 'regex:/^\d{9}$/'], // unikatowy telefon
             'email'       => ['nullable', 'email', 'max:255'], // unikatowy jeśli podany
             'date'        => 'required|date',
