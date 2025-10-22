@@ -339,25 +339,45 @@ public function getSlotsRangeTest(Request $request)
 
         $cacheKey = "slots:{$doctorId}:{$from}:{$to}:{$type}";
 
-        $slots = Cache::remember($cacheKey, 60, function () use ($doctorId, $from, $to, $type) {
-            $query = \App\Models\DoctorSlot::query()
-                ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
-                ->whereDate('date', '>=', $from)
-                ->whereDate('date', '<=', $to);
+        // $slots = Cache::remember($cacheKey, 60, function () use ($doctorId, $from, $to, $type) {
+        //     $query = \App\Models\DoctorSlot::query()
+        //         ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
+        //         ->whereDate('date', '>=', $from)
+        //         ->whereDate('date', '<=', $to);
 
-            if ($doctorId) {
-                $query->where('doctor_id', $doctorId);
-            }
+        //     if ($doctorId) {
+        //         $query->where('doctor_id', $doctorId);
+        //     }
 
-            if ($type !== 'all') {
-                $query->where('type', $type);
-            }
+        //     if ($type !== 'all') {
+        //         $query->where('type', $type);
+        //     }
 
-            return $query
-                ->orderBy('date')
-                ->orderBy('start_time')
-                ->get();
-        });
+        //     return $query
+        //         ->orderBy('date')
+        //         ->orderBy('start_time')
+        //         ->get();
+        // });
+        // tymczasowo, tylko do testów:
+$slots = (function () use ($doctorId, $from, $to, $type) {
+    $query = \App\Models\DoctorSlot::query()
+        ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
+        ->whereDate('date', '>=', $from)
+        ->whereDate('date', '<=', $to);
+
+    if ($doctorId) {
+        $query->where('doctor_id', $doctorId);
+    }
+
+    if ($type !== 'all') {
+        $query->where('type', $type);
+    }
+
+    return $query
+        ->orderBy('date')
+        ->orderBy('start_time')
+        ->get();
+})();
 
         // 🔹 Scalanie slotów dla jednej wizyty
         $groupedByVisit = $slots->groupBy(fn($slot) => $slot->visit_id ?: 'free');
