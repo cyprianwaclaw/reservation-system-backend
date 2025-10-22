@@ -322,8 +322,85 @@ public function getSlotsRangeTest(Request $request)
 }
 
 
-
     public function getSlotsRange(Request $request)
+    {
+        $validated = $request->validate([
+            'doctor_id' => 'nullable|integer|exists:doctors,id',
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'type' => 'nullable|in:available,reserved,vacation,all',
+        ]);
+
+        $doctorId = $validated['doctor_id'] ?? null;
+        $from = Carbon::parse($validated['from'])->toDateString();
+        $to = Carbon::parse($validated['to'])->toDateString();
+        $type = $validated['type'] ?? 'all';
+
+        // Pobieramy sloty
+        $slotsQuery = DoctorSlot::query()
+            ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
+            ->whereDate('date', '>=', $from)
+            ->whereDate('date', '<=', $to);
+
+        if ($doctorId) {
+            $slotsQuery->where('doctor_id', $doctorId);
+        }
+
+        if ($type !== 'all') {
+            $slotsQuery->where('type', $type);
+        }
+
+        $slots = $slotsQuery->orderBy('date')->orderBy('start_time')->get();
+
+        // Scalanie slotów dla jednej wizyty
+        $groupedByVisit = $slots->groupBy(fn($slot) => $slot->visit_id ?? 'free');
+
+        $mergedSlots = $groupedByVisit->flatMap(function ($group, $key) {
+            if ($key !== 'free') {
+                $start = $group->min(fn($s) => $s->start_time);
+                $end = $group->max(fn($s) => $s->end_time);
+                return [[
+                    'doctor_id' => $group->first()->doctor_id,
+                    'date' => $group->first()->date,
+                    'start_time' => $start,
+                    'end_time' => $end,
+                    'type' => 'reserved',
+                    'visit_id' => $key,
+                ]];
+            }
+            return $group->map(fn($s) => [
+                'doctor_id' => $s->doctor_id,
+                'date' => $s->date,
+                'start_time' => $s->start_time,
+                'end_time' => $s->end_time,
+                'type' => $s->type,
+                'visit_id' => $s->visit_id,
+            ]);
+        })->sortBy(fn($slot) => $slot['start_time'])->values();
+
+        // Grupowanie po dniu i doktorze
+        $groupedByDateDoctor = $mergedSlots->groupBy(fn($slot) => $slot['date'] . '|' . $slot['doctor_id'])
+            ->map(function ($slotsForDoctor) {
+                $allDayFree = $slotsForDoctor->every(fn($slot) => $slot['type'] === 'available');
+
+                return [
+                    'doctor_id' => $slotsForDoctor->first()['doctor_id'],
+                    'date' => $slotsForDoctor->first()['date'],
+                    'all_day_free' => $allDayFree,
+                    'slots' => $slotsForDoctor->map(fn($slot) => [
+                        'start_time' => $slot['start_time'],
+                        'end_time' => $slot['end_time'],
+                        'type' => $slot['type'],
+                        'visit_id' => $slot['visit_id'],
+                    ])->values(),
+                ];
+            })->values();
+
+        return response()->json($groupedByDateDoctor);
+    }
+    
+
+    public function getSlotsRangeOld(Request $request)
     {
         $validated = $request->validate([
             'doctor_id' => 'nullable|integer|exists:doctors,id',
