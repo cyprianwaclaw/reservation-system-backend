@@ -370,6 +370,67 @@ class DoctorSlotController extends Controller
     }
 
 
+    public function getSlotsRangeDate(Request $request)
+    {
+        $validated = $request->validate([
+            'doctor_id' => 'nullable|integer|exists:doctors,id',
+            'from' => 'required|date',
+            'to' => 'required|date|after_or_equal:from',
+            'type' => 'nullable|in:available,reserved,vacation,all',
+            'current_time' => 'nullable|date_format:H:i', // nowy parametr tylko godzina
+        ]);
+
+        $doctorId = $validated['doctor_id'] ?? null;
+        $from = Carbon::parse($validated['from'])->toDateString();
+        $to = Carbon::parse($validated['to'])->toDateString();
+        $type = $validated['type'] ?? 'all';
+
+        $today = Carbon::now()->toDateString();
+        $currentTime = $validated['current_time'] ?? Carbon::now()->toTimeString();
+
+        $slots = \App\Models\DoctorSlot::query()
+            ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
+            ->whereDate('date', '>=', $from)
+            ->whereDate('date', '<=', $to)
+            ->when($doctorId, fn($q) => $q->where('doctor_id', $doctorId))
+            ->when($type !== 'all', fn($q) => $q->where('type', $type))
+            ->when($from <= $today && $to >= $today, function ($q) use ($today, $currentTime) {
+                $q->where(function ($query) use ($today, $currentTime) {
+                    $query->where('date', '>', $today)
+                        ->orWhere(function ($q2) use ($today, $currentTime) {
+                            $q2->where('date', $today)
+                                ->where('start_time', '>', $currentTime);
+                        });
+                });
+            })
+            ->orderBy('date')
+            ->orderBy('start_time')
+            ->get()
+            ->map(function ($slot) {
+                return [
+                    'doctor_id' => (int) $slot->doctor_id,
+                    'date' => $slot->date,
+                    'start_time' => $slot->start_time,
+                    'end_time' => $slot->end_time,
+                    'type' => $slot->type,
+                    'visit_id' => $slot->visit_id ? (int) $slot->visit_id : null,
+                ];
+            })
+            ->unique(fn($slot) => "{$slot['doctor_id']}_{$slot['date']}_{$slot['start_time']}_{$slot['end_time']}")
+            ->values()
+            ->groupBy(fn($slot) => $slot['doctor_id'] . '|' . $slot['date'])
+            ->map(fn($slotsForDay) => [
+                'doctor_id' => $slotsForDay->first()['doctor_id'],
+                'date' => $slotsForDay->first()['date'],
+                'all_day_free' => $slotsForDay->every(fn($s) => $s['type'] === 'available'),
+                'slots' => $slotsForDay->sortBy('start_time')->values(),
+            ])
+            ->values();
+
+        return response()->json([$slots]);
+    }
+
+
     public function getSlotsRangeOld(Request $request)
     {
         $validated = $request->validate([
