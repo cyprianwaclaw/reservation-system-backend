@@ -236,14 +236,18 @@
 
             <div class="button-container">
                 <!-- Zmień termin -->
-                <a href="{{ $frontendUrl.'/zmien-termin-'.$visit->user->id.'-'.$visit->id }}" class="button">
+                {{-- <a href="{{ $frontendUrl.'/zmien-termin-'.$visit->user->id.'-'.$visit->id }}" class="button">
                     Zmień termin
+                </a> --}}
+                <a href="{{ $frontendUrl . '/zmien-termin?visit_id=' . $visit->id . '&user_id=' . $visit->user->id }}" class="remove-button">
+                   Zmień termin
                 </a>
 
                 <!-- Odwołaj wizytę -->
-                <a href="{{ $frontendUrl.'/odwolaj-wizyte-'.$visit->user->id.'-'.$visit->id }}" class="remove-button">
+                <a href="{{ $frontendUrl . '/odwolaj-wizyte?visit_id=' . $visit->id . '&user_id=' . $visit->user->id }}" class="remove-button">
                     Odwołaj wizytę
                 </a>
+
             </div>
 
 
