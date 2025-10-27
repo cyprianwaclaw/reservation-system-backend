@@ -15,7 +15,7 @@ Route::post('/slots/free', [DoctorSlotController::class, 'free']);
 Route::post('/slots/reserve-multi', [DoctorSlotController::class, 'reserveMulti']);
 // Route::get('/slots', [DoctorSlotController::class, 'getSlots']);
 Route::get('/slots/range', [DoctorSlotController::class, 'getSlotsRange']);
-Route::get('/slots/rangeDate', [DoctorSlotController::class, 'getSlotsRangeTest1']);
+Route::get('/slots/rangeDate', [DoctorSlotController::class, 'getSlotsRange1']);
 
 
 
