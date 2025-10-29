@@ -33,27 +33,28 @@
         }
 
         .button {
-            display: inline-block;
-            font-weight: 600;
-            color: white;
-            background: #31a9ce;
-            text-align: center;
-            white-space: nowrap;
-            text-decoration: none;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            user-select: none;
-            padding: 10px 20px;
-            font-size: 16px;
-            border: 1px solid transparent;
-            border-radius: 99px;
-            transition: all 0.3s;
+        display: inline-block;
+        font-weight: 600;
+        color: white;
+        background: #31a9ce;
+        text-align: center;
+        white-space: nowrap;
+        text-decoration: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        user-select: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        border: 1px solid transparent;
+        border-radius: 99px;
+        transition: all 0.3s;
         }
 
         .button:hover {
-            background-color: #2c9fc2;
-            cursor: pointer;
+        background-color: #2c9fc2;
+        cursor: pointer;
         }
+
 
         .remove-button {
             display: inline-block;
