@@ -235,21 +235,14 @@
             @endphp
 
             <div class="button-container">
-                <!-- Zmień termin -->
-                {{-- <a href="{{ $frontendUrl.'/zmien-termin-'.$visit->user->id.'-'.$visit->id }}" class="button">
-                    Zmień termin
-                </a> --}}
-                <a href="{{ $frontendUrl . '/zmien-termin?visit_id=' . $visit->id . '&user_id=' . $visit->user->id }}" class="remove-button">
+                <a href="{{ $frontendUrl . '/zmien-termin?visit_id=' . $visit->id . '&user_id=' . $visit->user->id }}" class="button">
                    Zmień termin
                 </a>
-
-                <!-- Odwołaj wizytę -->
                 <a href="{{ $frontendUrl . '/odwolaj-wizyte?visit_id=' . $visit->id . '&user_id=' . $visit->user->id }}" class="remove-button">
                     Odwołaj wizytę
                 </a>
 
             </div>
-
 
             <p class="before-footer">Do zobaczenia!<br>Zespół Fizjoterapia Kaczmarek</p>
         </div>

@@ -232,13 +232,15 @@
             @endphp
 
             <div class="button-container">
-                <a href="{{ $frontendUrl.'/zmien-termin-'.$visit->user->id.'-'.$visit->id }}" class="button">
+                <a href="{{ $frontendUrl . '/zmien-termin?visit_id=' . $visit->id . '&user_id=' . $visit->user->id }}" class="button">
                     Zmień termin
                 </a>
-                <a href="{{ $frontendUrl.'/odwolaj-wizyte-'.$visit->user->id.'-'.$visit->id }}" class="remove-button">
+                <a href="{{ $frontendUrl . '/odwolaj-wizyte?visit_id=' . $visit->id . '&user_id=' . $visit->user->id }}" class="remove-button">
                     Odwołaj wizytę
                 </a>
+
             </div>
+
             <div class="info-section">
                 <h3 class="info-title">Jak przygotować się do wizyty?</h3>
                 <ul class="info-list">
