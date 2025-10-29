@@ -1009,26 +1009,27 @@ public function reserve(NewVisitRequest $request)
     $reservationStart = Carbon::parse($validated['date'] . ' ' . $validated['start_time']);
     $reservationEnd   = $reservationStart->copy()->addMinutes($validated['duration']);
 
-    // 🔹 Sprawdzenia terminów
     if ($reservationEnd->lt(Carbon::now())) {
         return response()->json(['message' => 'Nie można rezerwować zakończonych terminów'], 422);
     }
+
     if ($reservationStart->isWeekend()) {
         return response()->json(['message' => 'Nie można rezerwować w weekendy'], 422);
     }
 
-    // 🔹 Sprawdzamy urlopy lekarza
+    // 🔹 Urlopy
     $hasVacation = Vacation::where('doctor_id', $request->doctor_id)
         ->where(function ($q) use ($reservationStart, $reservationEnd) {
             $q->whereRaw('TIMESTAMP(start_date, COALESCE(start_time, "00:00:00")) < ?', [$reservationEnd])
-                ->whereRaw('TIMESTAMP(end_date, COALESCE(end_time, "23:59:59")) > ?', [$reservationStart]);
+              ->whereRaw('TIMESTAMP(end_date, COALESCE(end_time, "23:59:59")) > ?', [$reservationStart]);
         })->exists();
 
     if ($hasVacation) {
         return response()->json(['message' => 'Lekarz jest na urlopie w tym terminie'], 422);
     }
 
-    // 🔹 Sprawdzamy kolizję wizyt
+
+    // 🔹 Kolizje wizyt
     $exists = Visit::where('doctor_id', $request->doctor_id)
         ->where('date', $reservationStart->toDateString())
         ->where(function ($query) use ($reservationStart, $reservationEnd) {
@@ -1043,7 +1044,10 @@ public function reserve(NewVisitRequest $request)
     }
 
 
-    // 🔹 Szukanie istniejącego usera
+    // =============================================================
+    // 🔹 Wyszukujemy usera (bez aktualizacji danych)
+    // =============================================================
+
     $user = null;
 
     if (!empty($validated['email'])) {
@@ -1054,18 +1058,26 @@ public function reserve(NewVisitRequest $request)
         $user = User::where('phone', $validated['phone'])->first();
     }
 
-
-    // 🔹 Jeśli brak usera → tworzymy
+    // 🔹 Nie ma usera → tworzymy
     if (!$user) {
         $user = User::create([
-            'email'   => $validated['email'] ?? null,
-            'phone'   => $validated['phone'] ?? null,
-            'password'=> bcrypt('password'),
+            'email'    => $validated['email'] ?? null,
+            'phone'    => $validated['phone'] ?? null,
+            'password' => bcrypt('password')
         ]);
     }
 
+    // 🔹 Jeśli istnieje opis → aktualizujemy
+    if (!empty($validated['opis'])) {
+        $user->opis = $validated['opis'];
+        $user->save();
+    }
 
-    // 🔹 Tworzymy wizytę
+
+    // =============================================================
+    // 🔹 Tworzenie wizyty
+    // =============================================================
+
     $visit = Visit::create([
         'doctor_id'  => $request->doctor_id,
         'type'       => $request->type,
@@ -1076,15 +1088,17 @@ public function reserve(NewVisitRequest $request)
     ]);
 
 
-    // 🔹 Jeśli user ma email → wyślij mail
-    if ($user->email) {
+    // =============================================================
+    // 🔹 MAIL – tylko jeśli user ma email
+    // =============================================================
+    if (!empty($user->email)) {
         try {
             Mail::to($user->email)->send(
                 new VisitConfirmationMail($visit->load('user', 'doctor'))
             );
         } catch (\Exception $e) {
             Log::error("Mail error: " . $e->getMessage());
-            // mail nie jest krytyczny → wizyta zostaje
+            // mail error NIE blokuje rezerwacji
         }
     }
 
