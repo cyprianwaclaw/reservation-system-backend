@@ -363,6 +363,12 @@ public function getVisitById($id)
         'start_time' => $visit->start_time,
         'end_time' => $visit->end_time,
         'notes' => $notes,
+        'doctor' => [
+            'id' => $visit->doctor->id,
+            // 'name' => $visit->doctor->name,
+            // 'surname' => $visit->doctor->surname,
+            // 'email' => $visit->doctor->email,
+        ],
         'fast_note' => $fast_note,
         'previous_visits' => $previousVisits,
     ]);
