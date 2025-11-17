@@ -15,7 +15,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
 
-        // Najpierw lekarze
+        // // Najpierw lekarze
         $this->call([
             DoctorSeeder::class,
         ]);

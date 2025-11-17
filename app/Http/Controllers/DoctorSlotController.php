@@ -500,8 +500,93 @@ class DoctorSlotController extends Controller
         return response()->json($slots);
     }
 
+    public function rollTodaySlots()
+    {
+        // DoctorSlot::create([
+        //     'doctor_id' => 1,
+        //     'date' => '2025-11-17',
+        //     'start_time' => '08:00',
+        //     'end_time' => '08:45',
+        // ]);
+        $today = Carbon::today()->toDateString();
+
+        // Pobieramy lekarzy, którzy mają sloty dzisiaj
+        $doctorIds = \App\Models\DoctorSlot::where('date', $today)
+            ->distinct()
+            ->pluck('doctor_id');
+
+        $results = [];
+
+        foreach ($doctorIds as $doctorId) {
+
+            // 1) Usuwamy dzisiejsze sloty
+            $deleted = \App\Models\DoctorSlot::where('doctor_id', $doctorId)
+                ->where('date', $today)
+                ->delete();
+
+            Log::info("Deleted $deleted slots for doctor $doctorId for today ($today)");
+
+            // 2) Pobieramy ostatnią datę slotów
+            $lastSlotDate = \App\Models\DoctorSlot::where('doctor_id', $doctorId)
+                ->orderByDesc('date')
+                ->value('date');
+
+            $lastDate = $lastSlotDate
+                ? Carbon::parse($lastSlotDate)
+                : Carbon::today();
+
+            // 3) Generujemy DOKŁADNIE jeden dzień więcej
+            $nextDay = $lastDate->copy()->addDay();
+
+            // 4) Dodajemy sloty w pętli (BEZ DoctorSlotService)
+            $this->generateSlotsForSingleDay($doctorId, $nextDay);
+
+            Log::info("Generated new slots for doctor $doctorId on {$nextDay->toDateString()}");
+
+            $results[] = [
+                'doctor_id' => $doctorId,
+                'today_deleted' => $today,
+                'next_day_generated' => $nextDay->toDateString(),
+            ];
+        }
+
+        return response()->json([
+            'message' => 'Rolled today\'s slots successfully',
+            'results' => $results,
+        ]);
+    }
+
+
+    private function generateSlotsForSingleDay(int $doctorId, Carbon $day)
+    {
+        $slotLengthMinutes = 45;
+
+        // USTAWIAMY GODZINY "NA SZTYWNO", BEZ PARSOWANIA STRINGÓW
+        $start = $day->copy()->setTime(8, 0);
+        $end   = $day->copy()->setTime(17, 0);
+
+        Log::info("Generating slots for $doctorId on $day | start=$start end=$end");
+
+        while ($start->lt($end)) {
+
+            $slotStart = $start->copy();
+            $slotEnd   = $start->copy()->addMinutes($slotLengthMinutes);
+
+            \App\Models\DoctorSlot::create([
+                'doctor_id'  => $doctorId,
+                'date'       => $day->toDateString(),
+                'start_time' => $slotStart->format('H:i:s'),
+                'end_time'   => $slotEnd->format('H:i:s'),
+            ]);
+
+            Log::info("Created slot for $doctorId: $slotStart - $slotEnd");
+
+            $start->addMinutes($slotLengthMinutes);
+        }
+    }
+
     // Endpoint do „rollowania” slotów – usuwa dzisiejsze i generuje na kolejny dzień
-    public function rollTodaySlots(DoctorSlotService $slotService)
+    public function rollTodaySlots1(DoctorSlotService $slotService)
     {
         // Data dzisiejsza
         $today = Carbon::today()->toDateString();
