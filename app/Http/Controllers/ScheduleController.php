@@ -1068,6 +1068,10 @@ public function reserve(NewVisitRequest $request)
     if (!$user) {
         $user = User::create([
             'email'    => $validated['email'] ?? null,
+            'name'    => $validated['name'] ?? null,
+            'surname'    => $validated['surname'] ?? null,
+                'wiek'    => $validated['wiek'] ?? null,
+                'opis'    => $validated['opis'] ?? null,
             'phone'    => $validated['phone'] ?? null,
             'password' => bcrypt('password')
         ]);
