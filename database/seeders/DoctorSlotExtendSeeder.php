@@ -11,7 +11,7 @@ class DoctorSlotExtendSeeder extends Seeder
     public function run(): void
     {
         // ILE DNIÓW CHCESZ DODAĆ (zmieniasz jak chcesz)
-        $daysToAdd = 22;
+        $daysToAdd = 10;
 
         // Pobieramy wszystkich lekarzy, którzy mają jakiekolwiek sloty
         $doctorIds = DoctorSlot::distinct()->pluck('doctor_id');
