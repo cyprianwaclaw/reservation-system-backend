@@ -93,27 +93,27 @@ class CheckTomorrowVisits extends Command
             // -----------------------------
             // 2️⃣ SMS
             // -----------------------------
-            // if ($user->phone) {
-            //     try {
-            //         $name = $user->name;
-            //         $visitTime = Carbon::parse($visit->date . ' ' . $visit->start_time)->format('H:i');
+            if ($user->phone) {
+                try {
+                    $name = $user->name;
+                    $visitTime = Carbon::parse($visit->date . ' ' . $visit->start_time)->format('H:i');
 
-            //         $message = "Czesc $name,\nzapraszamy jutro o $visitTime\nna wizyte w budynku basenu AWF pietro -1\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek";
+                    $message = "Czesc $name,\nzapraszamy jutro o $visitTime\nna wizyte w budynku basenu AWF pietro -1\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek";
 
-            //         $normalizedMessage = $this->normalizeMessage($message);
+                    $normalizedMessage = $this->normalizeMessage($message);
 
-            //         $sms = SendSmsBag::withMessage(
-            //             '48' . preg_replace('/\D/', '', $user->phone),
-            //             $normalizedMessage
-            //         );
-            //         $sms->from = 'Test';
-            //         $service->smsFeature()->sendSms($sms);
+                    $sms = SendSmsBag::withMessage(
+                        '48' . preg_replace('/\D/', '', $user->phone),
+                        $normalizedMessage
+                    );
+                    $sms->from = 'Test';
+                    $service->smsFeature()->sendSms($sms);
 
-            //         Log::info("[CheckTomorrowVisits] Wysłano SMS do {$user->phone}");
-            //     } catch (\Throwable $e) {
-            //         Log::error("[CheckTomorrowVisits] Błąd wysyłki SMS do {$user->phone}: " . $e->getMessage());
-            //     }
-            // }
+                    Log::info("[CheckTomorrowVisits] Wysłano SMS do {$user->phone}");
+                } catch (\Throwable $e) {
+                    Log::error("[CheckTomorrowVisits] Błąd wysyłki SMS do {$user->phone}: " . $e->getMessage());
+                }
+            }
 
             $this->info("Powiadomienia wysłane do {$user->name}");
         }
