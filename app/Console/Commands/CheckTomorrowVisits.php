@@ -106,7 +106,7 @@ class CheckTomorrowVisits extends Command
                         '48' . preg_replace('/\D/', '', $user->phone),
                         $normalizedMessage
                     );
-                    $sms->from = 'Test';
+                    $sms->from = 'Kaczmarek';
                     $service->smsFeature()->sendSms($sms);
 
                     Log::info("[CheckTomorrowVisits] Wysłano SMS do {$user->phone}");
