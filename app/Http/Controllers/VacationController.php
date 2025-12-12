@@ -7,10 +7,107 @@ use App\Models\Vacation;
 use Carbon\Carbon;
 
 use Illuminate\Validation\ValidationException;
+use App\Models\DoctorWorkingHour;
 
 class VacationController extends Controller
 {
+
     public function index(Request $request)
+    {
+        $week = $request->query('week');
+        $doctorId = $request->query('doctor_id'); // potrzebne aby policzyć godziny pracy
+
+        $query = Vacation::with('doctor');
+
+        // ... Twój dotychczasowy filtr ...
+
+        $vacations = $query->orderBy('start_date')->get();
+
+        // --------------------------------------------
+        // DODAJEMY BRAKI DOSTĘPNOŚCI Z GODZIN PRACY
+        // --------------------------------------------
+
+        if ($week && $doctorId) {
+
+            $dates = explode('-', $week);
+            $startDate = Carbon::createFromFormat('d.m.Y', trim($dates[0]));
+            $endDate = Carbon::createFromFormat('d.m.Y', trim($dates[1]));
+
+            $cursor = $startDate->clone();
+
+            while ($cursor->lte($endDate)) {
+
+                $dayOfWeek = $cursor->dayOfWeekIso; // 1=pon, 7=niedz
+
+                $working = DoctorWorkingHour::where('doctor_id', $doctorId)
+                    ->where('day_of_week', $dayOfWeek)
+                    ->first();
+
+                if (!$working) {
+                    // lekarz cały dzień nie pracuje
+                    $vacations->push((object)[
+                        'id' => null,
+                        'doctor_id' => $doctorId,
+                        'doctor_name' => null,
+                        'doctor_surname' => null,
+                        'start_date' => $cursor->toDateString(),
+                        'end_date' => $cursor->toDateString(),
+                        'start_time' => "00:00",
+                        'end_time' => "23:59",
+                    ]);
+                } else {
+
+                    // Przed pracą
+                    if ($working->start_time !== "00:00") {
+                        $vacations->push((object)[
+                            'id' => null,
+                            'doctor_id' => $doctorId,
+                            'doctor_name' => null,
+                            'doctor_surname' => null,
+                            'start_date' => $cursor->toDateString(),
+                            'end_date' => $cursor->toDateString(),
+                            'start_time' => "00:00",
+                            'end_time' => $working->start_time,
+                        ]);
+                    }
+
+                    // Po pracy
+                    if ($working->end_time !== "23:59") {
+                        $vacations->push((object)[
+                            'id' => null,
+                            'doctor_id' => $doctorId,
+                            'doctor_name' => null,
+                            'doctor_surname' => null,
+                            'start_date' => $cursor->toDateString(),
+                            'end_date' => $cursor->toDateString(),
+                            'start_time' => $working->end_time,
+                            'end_time' => "23:59",
+                        ]);
+                    }
+                }
+
+                $cursor->addDay();
+            }
+        }
+
+        // ❗ MAPOWANIE (jak w oryginale)
+        $result = $vacations->map(function ($vacation) {
+            return [
+                'id' => $vacation->id,
+                'doctor_id' => $vacation->doctor_id,
+                'doctor_name' => $vacation->doctor->name ?? null,
+                'doctor_surname' => $vacation->doctor->surname ?? null,
+                'start_date' => $vacation->start_date,
+                'end_date' => $vacation->end_date,
+                'start_time' => $vacation->start_time,
+                'end_time' => $vacation->end_time,
+            ];
+        });
+
+        return response()->json($result);
+    }
+
+    public function indexOld(Request $request)
     {
         $week = $request->query('week');
 
@@ -97,4 +194,3 @@ class VacationController extends Controller
         return response()->json(['message' => 'Urlop usunięty']);
     }
 }
-
