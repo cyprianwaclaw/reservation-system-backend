@@ -18,13 +18,6 @@ Route::get('/slots/range', [DoctorSlotController::class, 'getSlotsRange']);
 Route::get('/slots/rangeDate', [DoctorSlotController::class, 'getSlotsRange1']);
 
 
-
-
-
-
-
-
-
 // Route::prefix('availability')->group(function () {
 //     Route::get('/days/{start_date?}/{days_ahead?}', [ScheduleController::class, 'getAvailableDaysNew'])
 //         ->where([
@@ -59,7 +52,8 @@ Route::middleware('auth:sanctum')->group(
         });
 
         Route::prefix('vacations')->group(function () {
-            Route::get('/', [VacationController::class, 'index']);    // dodanie urlopu
+            Route::get('/', [VacationController::class, 'index']);
+            Route::get('/test', [VacationController::class, 'indexTest']);
             Route::delete('/{id}', [VacationController::class, 'destroy']); // usunięcie urlopu
         });
 
