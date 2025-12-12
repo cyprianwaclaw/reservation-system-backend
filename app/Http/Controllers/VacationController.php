@@ -349,43 +349,36 @@ public function index(Request $request)
     $vacations = $query->orderBy('start_date')->get();
 
     // -----------------------------------
-    // Generowanie slotów poza godzinami pracy co 15 minut
+    // Pobranie godzin pracy lekarzy
     // -----------------------------------
     $workingHours = DoctorWorkingHour::with('doctor')->get();
     $dayStart = Carbon::createFromTime(7, 30);
     $dayEnd   = Carbon::createFromTime(21, 0);
-    $interval = 15; // minuty
     $extra = [];
 
     $currentDate = $startDate->copy();
     while ($currentDate->lessThanOrEqualTo($endDate)) {
-        $dayOfWeek = $currentDate->dayOfWeekIso;
-
+        $dayOfWeek = $currentDate->dayOfWeekIso; // 1=Poniedziałek ... 7=Niedziela
         $doctors = $workingHours->groupBy('doctor_id');
+
         foreach ($doctors as $docId => $hours) {
             $doc = $hours->first()->doctor;
             $workHour = $hours->firstWhere('day_of_week', $dayOfWeek);
 
-            // Brak godzin pracy lub godziny pracy 00:00–00:00 → cały dzień sloty 07:30–21:00
+            // Brak godzin pracy lub 00:00–00:00 → cały dzień wolny
             if (!$workHour || ($workHour->start_time === '00:00' && $workHour->end_time === '00:00')) {
-                $slotStart = $dayStart->copy();
-                while ($slotStart->lessThan($dayEnd)) {
-                    $slotEnd = $slotStart->copy()->addMinutes($interval);
-                    if ($slotEnd->greaterThan($dayEnd)) $slotEnd = $dayEnd->copy();
-                    $extra[] = [
-                        'id'             => null,
-                        'doctor_id'      => $doc->id,
-                        'doctor_name'    => $doc->name,
-                        'doctor_surname' => $doc->surname,
-                        'start_date'     => $currentDate->format('Y-m-d'),
-                        'end_date'       => $currentDate->format('Y-m-d'),
-                        'start_time'     => $slotStart->format('H:i'),
-                        'end_time'       => $slotEnd->format('H:i'),
-                        'type'           => 'generated',
-                        'day_of_week'    => $dayOfWeek,
-                    ];
-                    $slotStart->addMinutes($interval);
-                }
+                $extra[] = [
+                    'id'             => null,
+                    'doctor_id'      => $doc->id,
+                    'doctor_name'    => $doc->name,
+                    'doctor_surname' => $doc->surname,
+                    'start_date'     => $currentDate->format('Y-m-d'),
+                    'end_date'       => $currentDate->format('Y-m-d'),
+                    'start_time'     => $dayStart->format('H:i'),
+                    'end_time'       => $dayEnd->format('H:i'),
+                    'type'           => 'generated',
+                    'day_of_week'    => $dayOfWeek,
+                ];
                 continue;
             }
 
@@ -394,46 +387,34 @@ public function index(Request $request)
 
             // Slot przed pracą
             if ($workStart->greaterThan($dayStart)) {
-                $slotStart = $dayStart->copy();
-                while ($slotStart->lessThan($workStart)) {
-                    $slotEnd = $slotStart->copy()->addMinutes($interval);
-                    if ($slotEnd->greaterThan($workStart)) $slotEnd = $workStart->copy();
-                    $extra[] = [
-                        'id'             => null,
-                        'doctor_id'      => $doc->id,
-                        'doctor_name'    => $doc->name,
-                        'doctor_surname' => $doc->surname,
-                        'start_date'     => $currentDate->format('Y-m-d'),
-                        'end_date'       => $currentDate->format('Y-m-d'),
-                        'start_time'     => $slotStart->format('H:i'),
-                        'end_time'       => $slotEnd->format('H:i'),
-                        'type'           => 'generated',
-                        'day_of_week'    => $dayOfWeek,
-                    ];
-                    $slotStart->addMinutes($interval);
-                }
+                $extra[] = [
+                    'id'             => null,
+                    'doctor_id'      => $doc->id,
+                    'doctor_name'    => $doc->name,
+                    'doctor_surname' => $doc->surname,
+                    'start_date'     => $currentDate->format('Y-m-d'),
+                    'end_date'       => $currentDate->format('Y-m-d'),
+                    'start_time'     => $dayStart->format('H:i'),
+                    'end_time'       => $workStart->format('H:i'),
+                    'type'           => 'generated',
+                    'day_of_week'    => $dayOfWeek,
+                ];
             }
 
             // Slot po pracy
             if ($workEnd->lessThan($dayEnd)) {
-                $slotStart = $workEnd->copy();
-                while ($slotStart->lessThan($dayEnd)) {
-                    $slotEnd = $slotStart->copy()->addMinutes($interval);
-                    if ($slotEnd->greaterThan($dayEnd)) $slotEnd = $dayEnd->copy();
-                    $extra[] = [
-                        'id'             => null,
-                        'doctor_id'      => $doc->id,
-                        'doctor_name'    => $doc->name,
-                        'doctor_surname' => $doc->surname,
-                        'start_date'     => $currentDate->format('Y-m-d'),
-                        'end_date'       => $currentDate->format('Y-m-d'),
-                        'start_time'     => $slotStart->format('H:i'),
-                        'end_time'       => $slotEnd->format('H:i'),
-                        'type'           => 'generated',
-                        'day_of_week'    => $dayOfWeek,
-                    ];
-                    $slotStart->addMinutes($interval);
-                }
+                $extra[] = [
+                    'id'             => null,
+                    'doctor_id'      => $doc->id,
+                    'doctor_name'    => $doc->name,
+                    'doctor_surname' => $doc->surname,
+                    'start_date'     => $currentDate->format('Y-m-d'),
+                    'end_date'       => $currentDate->format('Y-m-d'),
+                    'start_time'     => $workEnd->format('H:i'),
+                    'end_time'       => $dayEnd->format('H:i'),
+                    'type'           => 'generated',
+                    'day_of_week'    => $dayOfWeek,
+                ];
             }
         }
 
