@@ -312,55 +312,205 @@ class VacationController extends Controller
         return response()->json($full);
 }
 
-    public function index(Request $request)
-    {
-        $week = $request->query('week');
+public function index(Request $request)
+{
+    $week = $request->query('week');
 
-        $query = Vacation::with('doctor');
+    $query = Vacation::with('doctor');
 
-        if ($week) {
-            $dates = explode('-', $week);
-            if (count($dates) === 2) {
-                $startDateStr = trim($dates[0]);
-                $endDateStr = trim($dates[1]);
+    // -----------------------------------
+    // Parsowanie tygodnia z query
+    // -----------------------------------
+    if ($week) {
+        $dates = explode('-', $week);
+        if (count($dates) === 2) {
+            $startDateStr = trim($dates[0]);
+            $endDateStr   = trim($dates[1]);
 
-                $startDate = Carbon::createFromFormat('d.m.Y', $startDateStr);
-                $endDate = Carbon::createFromFormat('d.m.Y', $endDateStr);
+            $startDate = Carbon::createFromFormat('d.m.Y', $startDateStr)->startOfDay();
+            $endDate   = Carbon::createFromFormat('d.m.Y', $endDateStr)->endOfDay();
 
-                if ($startDate && $endDate) {
-                    // Pobieramy wakacje które mają jakikolwiek overlap z tym tygodniem
-                    $query->where(function ($q) use ($startDate, $endDate) {
-                        $q->whereBetween('start_date', [$startDate, $endDate])
-                            ->orWhereBetween('end_date', [$startDate, $endDate])
-                            ->orWhere(function ($q2) use ($startDate, $endDate) {
-                                $q2->where('start_date', '<=', $startDate)
-                                    ->where('end_date', '>=', $endDate);
-                            });
-                    });
+            if ($startDate && $endDate) {
+                $query->where(function ($q) use ($startDate, $endDate) {
+                    $q->whereBetween('start_date', [$startDate, $endDate])
+                      ->orWhereBetween('end_date', [$startDate, $endDate])
+                      ->orWhere(function ($q2) use ($startDate, $endDate) {
+                          $q2->where('start_date', '<=', $startDate)
+                             ->where('end_date', '>=', $endDate);
+                      });
+                });
+            }
+        }
+    } else {
+        $startDate = Carbon::today();
+        $endDate   = Carbon::today();
+    }
+
+    $vacations = $query->orderBy('start_date')->get();
+
+    // -----------------------------------
+    // Generowanie slotów poza godzinami pracy co 15 minut
+    // -----------------------------------
+    $workingHours = DoctorWorkingHour::with('doctor')->get();
+    $dayStart = Carbon::createFromTime(7, 30);
+    $dayEnd   = Carbon::createFromTime(21, 0);
+    $interval = 15; // minuty
+    $extra = [];
+
+    $currentDate = $startDate->copy();
+    while ($currentDate->lessThanOrEqualTo($endDate)) {
+        $dayOfWeek = $currentDate->dayOfWeekIso;
+
+        $doctors = $workingHours->groupBy('doctor_id');
+        foreach ($doctors as $docId => $hours) {
+            $doc = $hours->first()->doctor;
+            $workHour = $hours->firstWhere('day_of_week', $dayOfWeek);
+
+            // Brak godzin pracy lub godziny pracy 00:00–00:00 → cały dzień sloty 07:30–21:00
+            if (!$workHour || ($workHour->start_time === '00:00' && $workHour->end_time === '00:00')) {
+                $slotStart = $dayStart->copy();
+                while ($slotStart->lessThan($dayEnd)) {
+                    $slotEnd = $slotStart->copy()->addMinutes($interval);
+                    if ($slotEnd->greaterThan($dayEnd)) $slotEnd = $dayEnd->copy();
+                    $extra[] = [
+                        'id'             => null,
+                        'doctor_id'      => $doc->id,
+                        'doctor_name'    => $doc->name,
+                        'doctor_surname' => $doc->surname,
+                        'start_date'     => $currentDate->format('Y-m-d'),
+                        'end_date'       => $currentDate->format('Y-m-d'),
+                        'start_time'     => $slotStart->format('H:i'),
+                        'end_time'       => $slotEnd->format('H:i'),
+                        'type'           => 'generated',
+                        'day_of_week'    => $dayOfWeek,
+                    ];
+                    $slotStart->addMinutes($interval);
+                }
+                continue;
+            }
+
+            $workStart = Carbon::parse($workHour->start_time);
+            $workEnd   = Carbon::parse($workHour->end_time);
+
+            // Slot przed pracą
+            if ($workStart->greaterThan($dayStart)) {
+                $slotStart = $dayStart->copy();
+                while ($slotStart->lessThan($workStart)) {
+                    $slotEnd = $slotStart->copy()->addMinutes($interval);
+                    if ($slotEnd->greaterThan($workStart)) $slotEnd = $workStart->copy();
+                    $extra[] = [
+                        'id'             => null,
+                        'doctor_id'      => $doc->id,
+                        'doctor_name'    => $doc->name,
+                        'doctor_surname' => $doc->surname,
+                        'start_date'     => $currentDate->format('Y-m-d'),
+                        'end_date'       => $currentDate->format('Y-m-d'),
+                        'start_time'     => $slotStart->format('H:i'),
+                        'end_time'       => $slotEnd->format('H:i'),
+                        'type'           => 'generated',
+                        'day_of_week'    => $dayOfWeek,
+                    ];
+                    $slotStart->addMinutes($interval);
                 }
             }
-        } else {
-            // $today = Carbon::today();
-            // $query->whereDate('end_date', '>=', $today);
+
+            // Slot po pracy
+            if ($workEnd->lessThan($dayEnd)) {
+                $slotStart = $workEnd->copy();
+                while ($slotStart->lessThan($dayEnd)) {
+                    $slotEnd = $slotStart->copy()->addMinutes($interval);
+                    if ($slotEnd->greaterThan($dayEnd)) $slotEnd = $dayEnd->copy();
+                    $extra[] = [
+                        'id'             => null,
+                        'doctor_id'      => $doc->id,
+                        'doctor_name'    => $doc->name,
+                        'doctor_surname' => $doc->surname,
+                        'start_date'     => $currentDate->format('Y-m-d'),
+                        'end_date'       => $currentDate->format('Y-m-d'),
+                        'start_time'     => $slotStart->format('H:i'),
+                        'end_time'       => $slotEnd->format('H:i'),
+                        'type'           => 'generated',
+                        'day_of_week'    => $dayOfWeek,
+                    ];
+                    $slotStart->addMinutes($interval);
+                }
+            }
         }
 
-        $vacations = $query->orderBy('start_date')->get();
-
-        $result = $vacations->map(function ($vacation) {
-            return [
-                'id' => $vacation->id,
-                'doctor_id' => $vacation->doctor_id,
-                'doctor_name' => $vacation->doctor->name,
-                'doctor_surname' => $vacation->doctor->surname,
-                'start_date' => $vacation->start_date,
-                'end_date' => $vacation->end_date,
-                'start_time' => $vacation->start_time,
-                'end_time' => $vacation->end_time,
-            ];
-        });
-
-        return response()->json($result);
+        $currentDate->addDay();
     }
+
+    // -----------------------------------
+    // Mapowanie wakacji z bazy
+    // -----------------------------------
+    $result = $vacations->map(function ($vacation) {
+        return [
+            'id'             => $vacation->id,
+            'doctor_id'      => $vacation->doctor_id,
+            'doctor_name'    => $vacation->doctor->name,
+            'doctor_surname' => $vacation->doctor->surname,
+            'start_date'     => $vacation->start_date,
+            'end_date'       => $vacation->end_date,
+            'start_time'     => $vacation->start_time,
+            'end_time'       => $vacation->end_time,
+            'type'           => 'vacation',
+        ];
+    })->toArray();
+
+    $full = array_merge($result, $extra);
+
+    return response()->json($full);
+}
+
+    // public function index(Request $request)
+    // {
+    //     $week = $request->query('week');
+
+    //     $query = Vacation::with('doctor');
+
+    //     if ($week) {
+    //         $dates = explode('-', $week);
+    //         if (count($dates) === 2) {
+    //             $startDateStr = trim($dates[0]);
+    //             $endDateStr = trim($dates[1]);
+
+    //             $startDate = Carbon::createFromFormat('d.m.Y', $startDateStr);
+    //             $endDate = Carbon::createFromFormat('d.m.Y', $endDateStr);
+
+    //             if ($startDate && $endDate) {
+    //                 // Pobieramy wakacje które mają jakikolwiek overlap z tym tygodniem
+    //                 $query->where(function ($q) use ($startDate, $endDate) {
+    //                     $q->whereBetween('start_date', [$startDate, $endDate])
+    //                         ->orWhereBetween('end_date', [$startDate, $endDate])
+    //                         ->orWhere(function ($q2) use ($startDate, $endDate) {
+    //                             $q2->where('start_date', '<=', $startDate)
+    //                                 ->where('end_date', '>=', $endDate);
+    //                         });
+    //                 });
+    //             }
+    //         }
+    //     } else {
+    //         // $today = Carbon::today();
+    //         // $query->whereDate('end_date', '>=', $today);
+    //     }
+
+    //     $vacations = $query->orderBy('start_date')->get();
+
+    //     $result = $vacations->map(function ($vacation) {
+    //         return [
+    //             'id' => $vacation->id,
+    //             'doctor_id' => $vacation->doctor_id,
+    //             'doctor_name' => $vacation->doctor->name,
+    //             'doctor_surname' => $vacation->doctor->surname,
+    //             'start_date' => $vacation->start_date,
+    //             'end_date' => $vacation->end_date,
+    //             'start_time' => $vacation->start_time,
+    //             'end_time' => $vacation->end_time,
+    //         ];
+    //     });
+
+    //     return response()->json($result);
+    // }
 
     public function store(Request $request)
     {
