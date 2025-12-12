@@ -8,104 +8,177 @@ use Carbon\Carbon;
 
 use Illuminate\Validation\ValidationException;
 use App\Models\DoctorWorkingHour;
+use Illuminate\Support\Collection;
+use Carbon\CarbonPeriod;
+
 
 class VacationController extends Controller
 {
 
-    public function index(Request $request)
-    {
-        $week = $request->query('week');
-        $doctorId = $request->query('doctor_id'); // potrzebne aby policzyć godziny pracy
 
-        $query = Vacation::with('doctor');
+public function index(Request $request)
+{
+    $week = $request->query('week');
+    $doctorId = $request->query('doctor_id');
 
-        // ... Twój dotychczasowy filtr ...
+    if (!$doctorId) {
+        return response()->json(['message' => 'doctor_id is required for availability calculation'], 400);
+    }
 
-        $vacations = $query->orderBy('start_date')->get();
+    // Parsujemy zakres dat
+    if (!$week) {
+        return response()->json(['message' => 'week query is required (e.g. 10.12.2025 - 16.12.2025)'], 400);
+    }
 
-        // --------------------------------------------
-        // DODAJEMY BRAKI DOSTĘPNOŚCI Z GODZIN PRACY
-        // --------------------------------------------
+    $dates = explode('-', $week);
+    if (count($dates) !== 2) {
+        return response()->json(['message' => 'week format invalid'], 400);
+    }
 
-        if ($week && $doctorId) {
+    try {
+        $startDate = Carbon::createFromFormat('d.m.Y', trim($dates[0]))->startOfDay();
+        $endDate = Carbon::createFromFormat('d.m.Y', trim($dates[1]))->endOfDay();
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'invalid date format, use d.m.Y'], 400);
+    }
 
-            $dates = explode('-', $week);
-            $startDate = Carbon::createFromFormat('d.m.Y', trim($dates[0]));
-            $endDate = Carbon::createFromFormat('d.m.Y', trim($dates[1]));
+    // Pobieramy urlopy lekarza które mają overlap z zakresem
+    $vacations = Vacation::where('doctor_id', $doctorId)
+        ->where(function ($q) use ($startDate, $endDate) {
+            $q->whereBetween('start_date', [$startDate->toDateString(), $endDate->toDateString()])
+              ->orWhereBetween('end_date', [$startDate->toDateString(), $endDate->toDateString()])
+              ->orWhere(function ($q2) use ($startDate, $endDate) {
+                  $q2->where('start_date', '<=', $startDate->toDateString())
+                     ->where('end_date', '>=', $endDate->toDateString());
+              });
+        })
+        ->get();
 
-            $cursor = $startDate->clone();
+    // Pobieramy godziny pracy lekarza (wszystkie wpisy)
+    $workingHours = DoctorWorkingHour::where('doctor_id', $doctorId)->get()->keyBy(function($w){
+        return (int)$w->day_of_week; // 1..7
+    });
 
-            while ($cursor->lte($endDate)) {
+    // Kolekcja przedziałów (carbon start, carbon end)
+    $intervals = collect();
 
-                $dayOfWeek = $cursor->dayOfWeekIso; // 1=pon, 7=niedz
+    // 1) Dodajemy rzeczywiste urlopy (rozbijamy wielodniowe na dni z godzinami)
+    foreach ($vacations as $vac) {
+        // Zakładam, że pola start_date/end_date to date strings, start_time/end_time to time strings lub null
+        $vacStart = Carbon::parse($vac->start_date . ' ' . ($vac->start_time ?? '00:00:00'));
+        $vacEnd = Carbon::parse($vac->end_date . ' ' . ($vac->end_time ?? '23:59:59'));
 
-                $working = DoctorWorkingHour::where('doctor_id', $doctorId)
-                    ->where('day_of_week', $dayOfWeek)
-                    ->first();
+        // Ograniczamy do zapytanego zakresu
+        $segStart = $vacStart->greaterThan($startDate) ? $vacStart->copy() : $startDate->copy();
+        $segEnd = $vacEnd->lessThan($endDate) ? $vacEnd->copy() : $endDate->copy();
 
-                if (!$working) {
-                    // lekarz cały dzień nie pracuje
-                    $vacations->push((object)[
-                        'id' => null,
-                        'doctor_id' => $doctorId,
-                        'doctor_name' => null,
-                        'doctor_surname' => null,
-                        'start_date' => $cursor->toDateString(),
-                        'end_date' => $cursor->toDateString(),
-                        'start_time' => "00:00",
-                        'end_time' => "23:59",
-                    ]);
-                } else {
+        if ($segStart->lte($segEnd)) {
+            $intervals->push([
+                'start' => $segStart->copy(),
+                'end' => $segEnd->copy(),
+                'source' => 'vacation',
+                'vacation_id' => $vac->id,
+            ]);
+        }
+    }
 
-                    // Przed pracą
-                    if ($working->start_time !== "00:00") {
-                        $vacations->push((object)[
-                            'id' => null,
-                            'doctor_id' => $doctorId,
-                            'doctor_name' => null,
-                            'doctor_surname' => null,
-                            'start_date' => $cursor->toDateString(),
-                            'end_date' => $cursor->toDateString(),
-                            'start_time' => "00:00",
-                            'end_time' => $working->start_time,
-                        ]);
-                    }
+    // 2) Dla każdego dnia z zakresu generujemy bloki poza godzinami pracy
+    $period = CarbonPeriod::create($startDate->toDateString(), $endDate->toDateString());
+    foreach ($period as $day) {
+        $dayStart = $day->copy()->startOfDay(); // 00:00
+        $dayEnd = $day->copy()->endOfDay();     // 23:59:59
+        $dow = $day->dayOfWeekIso; // 1..7
 
-                    // Po pracy
-                    if ($working->end_time !== "23:59") {
-                        $vacations->push((object)[
-                            'id' => null,
-                            'doctor_id' => $doctorId,
-                            'doctor_name' => null,
-                            'doctor_surname' => null,
-                            'start_date' => $cursor->toDateString(),
-                            'end_date' => $cursor->toDateString(),
-                            'start_time' => $working->end_time,
-                            'end_time' => "23:59",
-                        ]);
-                    }
-                }
+        $working = $workingHours->get($dow); // może być null
 
-                $cursor->addDay();
-            }
+        if (!$working) {
+            // lekarz nie pracuje -> cały dzień unavailable
+            $intervals->push([
+                'start' => $dayStart->copy(),
+                'end' => $dayEnd->copy(),
+                'source' => 'working_absence',
+                'note' => 'no_working_hours'
+            ]);
+            continue;
         }
 
-        // ❗ MAPOWANIE (jak w oryginale)
-        $result = $vacations->map(function ($vacation) {
-            return [
-                'id' => $vacation->id,
-                'doctor_id' => $vacation->doctor_id,
-                'doctor_name' => $vacation->doctor->name ?? null,
-                'doctor_surname' => $vacation->doctor->surname ?? null,
-                'start_date' => $vacation->start_date,
-                'end_date' => $vacation->end_date,
-                'start_time' => $vacation->start_time,
-                'end_time' => $vacation->end_time,
-            ];
-        });
+        // Normalizujemy czasy pracy (baza ma format HH:MM:SS)
+        $workStart = Carbon::parse($day->toDateString() . ' ' . $working->start_time);
+        $workEnd = Carbon::parse($day->toDateString() . ' ' . $working->end_time);
 
-        return response()->json($result);
+        // Jeśli pracuje od i do tego samego czasu (równe) - traktujemy jako brak pracy
+        if ($workStart->eq($workEnd)) {
+            $intervals->push([
+                'start' => $dayStart->copy(),
+                'end' => $dayEnd->copy(),
+                'source' => 'working_absence',
+                'note' => 'start_equals_end'
+            ]);
+            continue;
+        }
+
+        // Jeśli godziny pracy nie pokrywają całego dnia - dodajemy blok przed i po
+        if ($dayStart->lt($workStart)) {
+            $intervals->push([
+                'start' => $dayStart->copy(),
+                'end' => $workStart->copy()->subSecond(), // koniec przed pracą
+                'source' => 'working_absence',
+            ]);
+        }
+
+        if ($workEnd->lt($dayEnd)) {
+            $intervals->push([
+                'start' => $workEnd->copy()->addSecond(), // zaraz po pracy
+                'end' => $dayEnd->copy(),
+                'source' => 'working_absence',
+            ]);
+        }
     }
+
+    // 3) Scalanie (merge) wszystkich przedziałów nakładających się
+    // Sortujemy po starcie
+    $sorted = $intervals->sortBy(function($i) { return $i['start']->timestamp; })->values();
+
+    $merged = collect();
+    foreach ($sorted as $it) {
+        if ($merged->isEmpty()) {
+            $merged->push($it);
+            continue;
+        }
+
+        $last = $merged->last();
+
+        // Jeśli aktualny start <= last.end + 1s => merge
+        if ($it['start']->lessThanOrEqualTo($last['end']->copy()->addSecond())) {
+            // poszerzamy last.end do max(last.end, it.end)
+            $last['end'] = $it['end']->greaterThan($last['end']) ? $it['end']->copy() : $last['end']->copy();
+            // zachowujemy source jako 'merged'
+            $last['source'] = 'merged';
+            // zamieniamy ostatni element
+            $merged->pop();
+            $merged->push($last);
+        } else {
+            $merged->push($it);
+        }
+    }
+
+    // 4) Mapujemy wynik do formatu JSON (podobnego do urlopów)
+    $result = $merged->map(function($it, $idx) use ($doctorId) {
+        return [
+            'id' => null,
+            'doctor_id' => $doctorId,
+            'doctor_name' => null,
+            'doctor_surname' => null,
+            'start_date' => $it['start']->toDateString(),
+            'end_date' => $it['end']->toDateString(),
+            'start_time' => $it['start']->toTimeString(), // HH:MM:SS
+            'end_time' => $it['end']->toTimeString(),
+            'source' => $it['source'] ?? null,
+        ];
+    })->values();
+
+    return response()->json($result);
+}
 
     public function indexOld(Request $request)
     {
