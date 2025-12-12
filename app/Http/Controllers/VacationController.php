@@ -352,7 +352,7 @@ public function index(Request $request)
     // Pobranie godzin pracy lekarzy
     // -----------------------------------
     $workingHours = DoctorWorkingHour::with('doctor')->get();
-    $dayStart = Carbon::createFromTime(7, 30);
+    $dayStart = Carbon::createFromTime(7, 00);
     $dayEnd   = Carbon::createFromTime(21, 0);
     $extra = [];
 
