@@ -237,21 +237,40 @@ class VacationController extends Controller
             $workEnd   = Carbon::parse($workHour->end_time);
 
             // Jeśli godziny pracy są całodniowe 00:00–00:00 → traktujemy jako cały dzień wolny
-            if ($workStart->format('H:i') === '00:00' && $workEnd->format('H:i') === '00:00') {
-                $extra[] = [
-                    'id'             => null,
-                    'doctor_id'      => $doc->id,
-                    'doctor_name'    => $doc->name,
-                    'doctor_surname' => $doc->surname,
-                    'start_date'     => $currentDate->format('Y-m-d'),
-                    'end_date'       => $currentDate->format('Y-m-d'),
-                    'start_time'     => '00:00',
-                    'end_time'       => '23:59',
-                    'type'           => 'generated',
-                    'day_of_week'    => $dayOfWeek,
-                ];
-                continue;
-            }
+            // if ($workStart->format('H:i') === '00:00' && $workEnd->format('H:i') === '00:00') {
+            //     $extra[] = [
+            //         'id'             => null,
+            //         'doctor_id'      => $doc->id,
+            //         'doctor_name'    => $doc->name,
+            //         'doctor_surname' => $doc->surname,
+            //         'start_date'     => $currentDate->format('Y-m-d'),
+            //         'end_date'       => $currentDate->format('Y-m-d'),
+            //         'start_time'     => '00:00',
+            //         'end_time'       => '23:59',
+            //         'type'           => 'generated',
+            //         'day_of_week'    => $dayOfWeek,
+            //     ];
+            //     continue;
+            // }
+            // Sprawdź godziny pracy w tym dniu
+$workHour = $hours->firstWhere('day_of_week', $dayOfWeek);
+
+// Brak godzin pracy lub godziny pracy 00:00–00:00 → cały dzień wolny (7:30–21:00)
+if (!$workHour || ($workHour->start_time === '00:00' && $workHour->end_time === '00:00')) {
+    $extra[] = [
+        'id'             => null,
+        'doctor_id'      => $doc->id,
+        'doctor_name'    => $doc->name,
+        'doctor_surname' => $doc->surname,
+        'start_date'     => $currentDate->format('Y-m-d'),
+        'end_date'       => $currentDate->format('Y-m-d'),
+        'start_time'     => $dayStart->format('H:i'), // 07:30
+        'end_time'       => $dayEnd->format('H:i'),   // 21:00
+        'type'           => 'generated',
+        'day_of_week'    => $dayOfWeek,
+    ];
+    continue; // nie generujemy dalszych slotów
+}
 
             // Slot przed pracą
             if ($workStart->greaterThan($dayStart)) {
