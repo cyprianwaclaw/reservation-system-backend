@@ -17,7 +17,108 @@ class VacationController extends Controller
 
     public function indexTest(Request $request)
 {
-    $week = $request->query('week');
+    // $week = $request->query('week');
+
+    // $query = Vacation::with('doctor');
+
+    // if ($week) {
+    //     $dates = explode('-', $week);
+    //     if (count($dates) === 2) {
+    //         $startDateStr = trim($dates[0]);
+    //         $endDateStr = trim($dates[1]);
+
+    //         $startDate = Carbon::createFromFormat('d.m.Y', $startDateStr);
+    //         $endDate   = Carbon::createFromFormat('d.m.Y', $endDateStr);
+
+    //         if ($startDate && $endDate) {
+    //             $query->where(function ($q) use ($startDate, $endDate) {
+    //                 $q->whereBetween('start_date', [$startDate, $endDate])
+    //                     ->orWhereBetween('end_date', [$startDate, $endDate])
+    //                     ->orWhere(function ($q2) use ($startDate, $endDate) {
+    //                         $q2->where('start_date', '<=', $startDate)
+    //                             ->where('end_date', '>=', $endDate);
+    //                     });
+    //             });
+    //         }
+    //     }
+    // }
+
+    // $vacations = $query->orderBy('start_date')->get();
+
+    // // ---------------------------------------
+    // // DODAJEMY GODZINY POZA PRACĄ
+    // // ---------------------------------------
+
+    // // Pobieramy godziny pracy wszystkich lekarzy
+    // $workingHours = DoctorWorkingHour::with('doctor')->get();
+
+    // // Sloty ramowe
+    // $dayStart = Carbon::createFromTime(7, 30);
+    // $dayEnd   = Carbon::createFromTime(21, 0);
+
+    // $extra = [];
+
+    // foreach ($workingHours as $wh) {
+
+    //     $doc = $wh->doctor;
+
+    //     // godziny pracy lekarza
+    //     $workStart = Carbon::parse($wh->start_time);
+    //     $workEnd   = Carbon::parse($wh->end_time);
+
+    //     // 1. Jeśli pracuje od 8:15 → wcześniejszy brak pracy 07:30–08:15
+    //     if ($workStart->greaterThan($dayStart)) {
+    //         $extra[] = [
+    //             'id'            => null,
+    //             'doctor_id'     => $doc->id,
+    //             'doctor_name'   => $doc->name,
+    //             'doctor_surname'=> $doc->surname,
+    //             'start_date'    => null,
+    //             'end_date'      => null,
+    //             'start_time'    => $dayStart->format('H:i'),
+    //             'end_time'      => $workStart->format('H:i'),
+    //             'type'          => 'generated', // oznaczenie
+    //             'day_of_week'   => $wh->day_of_week
+    //         ];
+    //     }
+
+    //     // 2. Jeśli kończy o 16 → brak pracy 16:00–21:00
+    //     if ($workEnd->lessThan($dayEnd)) {
+    //         $extra[] = [
+    //             'id'            => null,
+    //             'doctor_id'     => $doc->id,
+    //             'doctor_name'   => $doc->name,
+    //             'doctor_surname'=> $doc->surname,
+    //             'start_date'    => null,
+    //             'end_date'      => null,
+    //             'start_time'    => $workEnd->format('H:i'),
+    //             'end_time'      => $dayEnd->format('H:i'),
+    //             'type'          => 'generated',
+    //             'day_of_week'   => $wh->day_of_week
+    //         ];
+    //     }
+    // }
+
+    // // mapowanie wakacji
+    // $result = $vacations->map(function ($vacation) {
+    //     return [
+    //         'id'            => $vacation->id,
+    //         'doctor_id'     => $vacation->doctor_id,
+    //         'doctor_name'   => $vacation->doctor->name,
+    //         'doctor_surname'=> $vacation->doctor->surname,
+    //         'start_date'    => $vacation->start_date,
+    //         'end_date'      => $vacation->end_date,
+    //         'start_time'    => $vacation->start_time,
+    //         'end_time'      => $vacation->end_time,
+    //         'type'          => 'vacation'
+    //     ];
+    // })->toArray();
+
+    // // scal prawdziwe wakacje + generowane
+    // $full = array_merge($result, $extra);
+
+    // return response()->json($full);
+       $week = $request->query('week');
 
     $query = Vacation::with('doctor');
 
@@ -25,10 +126,10 @@ class VacationController extends Controller
         $dates = explode('-', $week);
         if (count($dates) === 2) {
             $startDateStr = trim($dates[0]);
-            $endDateStr = trim($dates[1]);
+            $endDateStr   = trim($dates[1]);
 
-            $startDate = Carbon::createFromFormat('d.m.Y', $startDateStr);
-            $endDate   = Carbon::createFromFormat('d.m.Y', $endDateStr);
+            $startDate = Carbon::createFromFormat('d.m.Y', $startDateStr)->startOfDay();
+            $endDate   = Carbon::createFromFormat('d.m.Y', $endDateStr)->endOfDay();
 
             if ($startDate && $endDate) {
                 $query->where(function ($q) use ($startDate, $endDate) {
@@ -36,7 +137,7 @@ class VacationController extends Controller
                         ->orWhereBetween('end_date', [$startDate, $endDate])
                         ->orWhere(function ($q2) use ($startDate, $endDate) {
                             $q2->where('start_date', '<=', $startDate)
-                                ->where('end_date', '>=', $endDate);
+                               ->where('end_date', '>=', $endDate);
                         });
                 });
             }
@@ -46,51 +147,51 @@ class VacationController extends Controller
     $vacations = $query->orderBy('start_date')->get();
 
     // ---------------------------------------
-    // DODAJEMY GODZINY POZA PRACĄ
+    // GODZINY PRACY → SLOTY POZA PRACĄ
     // ---------------------------------------
 
-    // Pobieramy godziny pracy wszystkich lekarzy
     $workingHours = DoctorWorkingHour::with('doctor')->get();
 
-    // Sloty ramowe
     $dayStart = Carbon::createFromTime(7, 30);
     $dayEnd   = Carbon::createFromTime(21, 0);
 
     $extra = [];
 
     foreach ($workingHours as $wh) {
-
         $doc = $wh->doctor;
 
-        // godziny pracy lekarza
         $workStart = Carbon::parse($wh->start_time);
         $workEnd   = Carbon::parse($wh->end_time);
 
-        // 1. Jeśli pracuje od 8:15 → wcześniejszy brak pracy 07:30–08:15
+        // Konwersja day_of_week na datę w podanym tygodniu
+        // 1 = Poniedziałek, 7 = Niedziela
+        $dayDate = Carbon::parse($startDateStr)->startOfWeek()->addDays($wh->day_of_week - 1);
+
+        // Slot przed pracą
         if ($workStart->greaterThan($dayStart)) {
             $extra[] = [
                 'id'            => null,
                 'doctor_id'     => $doc->id,
                 'doctor_name'   => $doc->name,
                 'doctor_surname'=> $doc->surname,
-                'start_date'    => null,
-                'end_date'      => null,
+                'start_date'    => $dayDate->format('Y-m-d'),
+                'end_date'      => $dayDate->format('Y-m-d'),
                 'start_time'    => $dayStart->format('H:i'),
                 'end_time'      => $workStart->format('H:i'),
-                'type'          => 'generated', // oznaczenie
+                'type'          => 'generated',
                 'day_of_week'   => $wh->day_of_week
             ];
         }
 
-        // 2. Jeśli kończy o 16 → brak pracy 16:00–21:00
+        // Slot po pracy
         if ($workEnd->lessThan($dayEnd)) {
             $extra[] = [
                 'id'            => null,
                 'doctor_id'     => $doc->id,
                 'doctor_name'   => $doc->name,
                 'doctor_surname'=> $doc->surname,
-                'start_date'    => null,
-                'end_date'      => null,
+                'start_date'    => $dayDate->format('Y-m-d'),
+                'end_date'      => $dayDate->format('Y-m-d'),
                 'start_time'    => $workEnd->format('H:i'),
                 'end_time'      => $dayEnd->format('H:i'),
                 'type'          => 'generated',
@@ -114,7 +215,6 @@ class VacationController extends Controller
         ];
     })->toArray();
 
-    // scal prawdziwe wakacje + generowane
     $full = array_merge($result, $extra);
 
     return response()->json($full);
