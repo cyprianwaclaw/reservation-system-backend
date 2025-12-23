@@ -559,11 +559,16 @@ class DoctorSlotController extends Controller
 
     private function generateSlotsForSingleDay(int $doctorId, Carbon $day)
     {
-        $slotLengthMinutes = 45;
+        // $slotLengthMinutes = 45;
 
-        // USTAWIAMY GODZINY "NA SZTYWNO", BEZ PARSOWANIA STRINGÓW
-        $start = $day->copy()->setTime(8, 0);
-        $end   = $day->copy()->setTime(17, 0);
+        // // USTAWIAMY GODZINY "NA SZTYWNO", BEZ PARSOWANIA STRINGÓW
+        // $start = $day->copy()->setTime(8, 0);
+        // $end   = $day->copy()->setTime(17, 0);
+
+                // Godziny pracy — możesz zmienić
+        $slotLengthMinutes = 45;
+        $start = $day->copy()->setTime(7, 30);
+        $end   = $day->copy()->setTime(21, 0);
 
         Log::info("Generating slots for $doctorId on $day | start=$start end=$end");
 
