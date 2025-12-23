@@ -43,7 +43,7 @@ class DoctorSlotExtendSeeder extends Seeder
     {
         // Godziny pracy — możesz zmienić
         $slotLengthMinutes = 45;
-        $start = $day->copy()->setTime(7, 00);
+        $start = $day->copy()->setTime(7, 30);
         $end   = $day->copy()->setTime(21, 0);
 
         while ($start->lt($end)) {
