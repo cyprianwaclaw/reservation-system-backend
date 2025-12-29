@@ -11,7 +11,7 @@ class DoctorSlotDeleteRangeSeeder extends Seeder
     {
         // USTAW SWÓJ ZAKRES DAT
         $from = '2026-01-16'; // od tej daty
-        $to   = '2026-02-02'; // do tej daty włącznie
+        $to   = '2026-02-09'; // do tej daty włącznie
 
         DoctorSlot::whereBetween('date', [$from, $to])->delete();
     }

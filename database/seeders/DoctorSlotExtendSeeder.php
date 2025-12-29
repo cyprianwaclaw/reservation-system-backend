@@ -10,43 +10,49 @@ class DoctorSlotExtendSeeder extends Seeder
 {
     public function run(): void
     {
-        // ILE DNIÓW CHCESZ DODAĆ (zmieniasz jak chcesz)
-        $daysToAdd = 1;
+        // ---------------------------------
+        // USTAW SWÓJ ZAKRES DAT
+        // ---------------------------------
+        $from = Carbon::parse('2026-01-16');
+        $to   = Carbon::parse('2026-02-09');
 
-        // Pobieramy wszystkich lekarzy, którzy mają jakiekolwiek sloty
+        // Pobieramy wszystkich lekarzy
         $doctorIds = DoctorSlot::distinct()->pluck('doctor_id');
 
         foreach ($doctorIds as $doctorId) {
 
-            // Ostatnia istniejąca data slotów
-            $lastDate = DoctorSlot::where('doctor_id', $doctorId)
-                ->orderByDesc('date')
-                ->value('date');
+            $currentDay = $from->copy();
 
-            if (!$lastDate) {
-                // Jeżeli lekarz nie ma żadnych slotów — pomijamy
-                continue;
-            }
+            while ($currentDay->lte($to)) {
 
-            $current = Carbon::parse($lastDate)->copy()->addDay();
+                // (opcjonalnie) pomiń weekendy
+                // if ($currentDay->isWeekend()) {
+                //     $currentDay->addDay();
+                //     continue;
+                // }
 
-            // Generujemy kolejne X dni
-            for ($i = 0; $i < $daysToAdd; $i++) {
+                // Zabezpieczenie przed duplikacją
+                $exists = DoctorSlot::where('doctor_id', $doctorId)
+                    ->where('date', $currentDay->toDateString())
+                    ->exists();
 
-                $this->createSlotsForDay($doctorId, $current);
-                $current->addDay();
+                if (! $exists) {
+                    $this->createSlotsForDay($doctorId, $currentDay);
+                }
+
+                $currentDay->addDay();
             }
         }
     }
 
     private function createSlotsForDay(int $doctorId, Carbon $day)
     {
-        // Godziny pracy — możesz zmienić
         $slotLengthMinutes = 45;
+
         $start = $day->copy()->setTime(7, 30);
         $end   = $day->copy()->setTime(21, 0);
 
-        while ($start->lt($end)) {
+        while ($start->copy()->addMinutes($slotLengthMinutes)->lte($end)) {
 
             DoctorSlot::create([
                 'doctor_id'  => $doctorId,
