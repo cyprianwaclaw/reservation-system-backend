@@ -8,6 +8,7 @@ use App\Mail\VisitCancelledMail;
 use App\Models\Visit;
 use App\Mail\VisitRescheduledSimpleMail;
 use App\Http\Controllers\SmsController;
+use App\Http\Controllers\MonthlyVisitsSummaryController;
 use App\Http\Controllers\DoctorSlotController;
 
 Route::get('/', function () {
@@ -22,10 +23,18 @@ Route::get('/slots/roll-today', [DoctorSlotController::class, 'rollTodaySlots'])
 
 Route::get('/send-sms', [SmsController::class, 'sendSms']);
 
+// Route::get('/visits-type', function () {
+//     $visit = Visit::find(2); // przykładowa wizyta
+//     return new VisitReminderMail($visit);
+// });
+
+Route::get('/visits-type', [MonthlyVisitsSummaryController::class, 'send']);
+
 Route::get('/remainder-mail', function () {
     $visit = Visit::find(2); // przykładowa wizyta
     return new VisitReminderMail($visit);
 });
+
 Route::get('/confirmation-mail', function () {
     $visit = Visit::find(2); // przykładowa wizyta
     return new VisitConfirmationMail($visit);
