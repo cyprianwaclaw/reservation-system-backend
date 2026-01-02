@@ -209,7 +209,7 @@
         <div class="header">
             <img src="https://fizjoterapia-kaczmarek.pl/wp-content/uploads/2025/08/logo-basic.png" class="logo" />
         </div>
-        <div class="container">
+        <div class="content">
         <h2>Podsumowanie wizyt – {{ $month }}</h2>
 
         @foreach($report as $doctor)
@@ -224,10 +224,6 @@
             </ul>
         </div>
         @endforeach
-
-        <p style="margin-top:30px;font-size:13px;color:#777;">
-            Raport wygenerowany ręcznie przez panel administracyjny.
-        </p>
         </div>
 </body>
 

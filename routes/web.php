@@ -28,7 +28,7 @@ Route::get('/send-sms', [SmsController::class, 'sendSms']);
 //     return new VisitReminderMail($visit);
 // });
 
-Route::get('/visits-type', [MonthlyVisitsSummaryController::class, 'send']);
+Route::get('/visits-type', [MonthlyVisitsSummaryController::class, 'preview']);
 
 Route::get('/remainder-mail', function () {
     $visit = Visit::find(2); // przykładowa wizyta
