@@ -257,12 +257,13 @@
      @if(!empty($clubSummary))
      <h3>Podsumowanie wszystkich klubów</h3>
      @foreach($clubSummary as $type => $data)
-     <p><strong>{{ $type }}</strong> – {{ $data['count'] }} wizyt</p>
-     <ul>
-         @foreach($data['patients'] as $patient)
-         <li>{{ $patient }}</li>
-         @endforeach
-     </ul>
+   <p><strong>{{ $type }}</strong> – {{ $data['count'] }} wizyt</p>
+   <ul>
+       @foreach($data['patients'] as $patient => $count)
+       <li>{{ $patient }} - {{ $count }}</li>
+       @endforeach
+   </ul>
+
      @endforeach
      <hr>
      @endif

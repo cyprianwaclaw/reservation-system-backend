@@ -15,7 +15,7 @@ class MonthlyVisitsSummaryController extends Controller
      * Podgląd maila w przeglądarce
      */
      public function preview()
-       {
+      {
         App::setLocale('pl');
         Carbon::setLocale('pl');
 
@@ -58,17 +58,19 @@ class MonthlyVisitsSummaryController extends Controller
 
             if (!isset($report[$doctorId]['types'][$type])) {
                 $report[$doctorId]['types'][$type] = [
-                    'count' => 0,
-                    'patients' => [],
+                    'count' => 0,          // liczba wszystkich wizyt w tym typie
+                    'patients' => [],      // tablica pacjent => liczba wizyt
                 ];
             }
 
-            // Zwiększamy count dla każdej wizyty
+            // Zwiększamy całkowitą liczbę wizyt w typie
             $report[$doctorId]['types'][$type]['count'] += 1;
 
-            // Dodajemy pacjenta tylko jeśli jeszcze nie ma go w liście
-            if (!in_array($patientName, $report[$doctorId]['types'][$type]['patients'])) {
-                $report[$doctorId]['types'][$type]['patients'][] = $patientName;
+            // Zwiększamy licznik dla pacjenta
+            if (!isset($report[$doctorId]['types'][$type]['patients'][$patientName])) {
+                $report[$doctorId]['types'][$type]['patients'][$patientName] = 1;
+            } else {
+                $report[$doctorId]['types'][$type]['patients'][$patientName] += 1;
             }
 
             $report[$doctorId]['total'] += 1;
@@ -83,8 +85,11 @@ class MonthlyVisitsSummaryController extends Controller
                 }
 
                 $clubSummary[$type]['count'] += 1;
-                if (!in_array($patientName, $clubSummary[$type]['patients'])) {
-                    $clubSummary[$type]['patients'][] = $patientName;
+
+                if (!isset($clubSummary[$type]['patients'][$patientName])) {
+                    $clubSummary[$type]['patients'][$patientName] = 1;
+                } else {
+                    $clubSummary[$type]['patients'][$patientName] += 1;
                 }
             }
         }
