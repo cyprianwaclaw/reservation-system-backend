@@ -15,7 +15,7 @@ class MonthlyVisitsSummaryController extends Controller
      * Podgląd maila w przeglądarce
      */
      public function preview()
-    {
+       {
         App::setLocale('pl');
         Carbon::setLocale('pl');
 
@@ -38,7 +38,7 @@ class MonthlyVisitsSummaryController extends Controller
             ->get();
 
         $report = [];
-        $clubSummary = []; // podsumowanie wszystkich klubów
+        $clubSummary = [];
         $clubTypes = ['AWF', 'WKS', 'Klub gimnastyki'];
 
         foreach ($visits as $visit) {
@@ -63,8 +63,14 @@ class MonthlyVisitsSummaryController extends Controller
                 ];
             }
 
+            // Zwiększamy count dla każdej wizyty
             $report[$doctorId]['types'][$type]['count'] += 1;
-            $report[$doctorId]['types'][$type]['patients'][] = $patientName;
+
+            // Dodajemy pacjenta tylko jeśli jeszcze nie ma go w liście
+            if (!in_array($patientName, $report[$doctorId]['types'][$type]['patients'])) {
+                $report[$doctorId]['types'][$type]['patients'][] = $patientName;
+            }
+
             $report[$doctorId]['total'] += 1;
 
             // Podsumowanie klubów
@@ -75,8 +81,11 @@ class MonthlyVisitsSummaryController extends Controller
                         'patients' => [],
                     ];
                 }
+
                 $clubSummary[$type]['count'] += 1;
-                $clubSummary[$type]['patients'][] = $patientName;
+                if (!in_array($patientName, $clubSummary[$type]['patients'])) {
+                    $clubSummary[$type]['patients'][] = $patientName;
+                }
             }
         }
 
