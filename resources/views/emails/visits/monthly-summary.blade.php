@@ -227,39 +227,49 @@
         </div>
     </div> --}}
 
-    <body>
-        <div class="container">
-            <div class="header">
-                <img src="https://fizjoterapia-kaczmarek.pl/wp-content/uploads/2025/08/logo-basic.png" class="logo" />
-            </div>
-  <div class="content">
+ <div class="container">
+     <div class="header">
+         <img src="https://fizjoterapia-kaczmarek.pl/wp-content/uploads/2025/08/logo-basic.png" class="logo" />
+     </div>
+        <div class="content">
 
-            <h2>Podsumowanie wizyt – {{ $month }}</h2>
 
-            @foreach($report as $doctor)
-            <div class="doctor">
-                <h3>{{ $doctor['doctor'] }}</h3>
+     <h2>Podsumowanie wizyt – {{ $month }}</h2>
 
-                @foreach($doctor['types'] as $type => $data)
-                <p><strong>{{ $type }}</strong> – {{ $data['count'] }} wizyt</p>
-                <ul>
-                    @foreach($data['patients'] as $patient)
-                    <li>{{ $patient }}</li>
-                    @endforeach
-                </ul>
-                @endforeach
+     @foreach($report as $doctor)
+     <div class="doctor">
+         <h3>{{ $doctor['doctor'] }}</h3>
 
-                <p><strong>Łącznie wizyt:</strong> {{ $doctor['total'] }}</p>
-                <hr>
-            </div>
-            @endforeach
-        </div>
+         @foreach($doctor['types'] as $type => $data)
+         <p><strong>{{ $type }}</strong> – {{ $data['count'] }} wizyt</p>
+         <ul>
+             @foreach($data['patients'] as $patient)
+             <li>{{ $patient }}</li>
+             @endforeach
+         </ul>
+         @endforeach
 
-            {{-- <p style="margin-top:30px;font-size:13px;color:#777;">
-                Raport wygenerowany ręcznie przez panel administracyjny.
-            </p> --}}
-        </div>
-    </body>
+         <p><strong>Łącznie wizyt:</strong> {{ $doctor['total'] }}</p>
+         <hr>
+     </div>
+     @endforeach
+
+     @if(!empty($clubSummary))
+     <h3>Podsumowanie wszystkich klubów</h3>
+     @foreach($clubSummary as $type => $data)
+     <p><strong>{{ $type }}</strong> – {{ $data['count'] }} wizyt</p>
+     <ul>
+         @foreach($data['patients'] as $patient)
+         <li>{{ $patient }}</li>
+         @endforeach
+     </ul>
+     @endforeach
+     <hr>
+     @endif
+     </div>
+
+ </div>
+
 
 
 </body>

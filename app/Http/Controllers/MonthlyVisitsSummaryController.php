@@ -23,7 +23,6 @@ class MonthlyVisitsSummaryController extends Controller
         $prevMonthEnd   = Carbon::now()->subMonthNoOverflow()->endOfMonth()->endOfDay();
         $monthLabel = $prevMonthStart->translatedFormat('F Y');
 
-        // Pobranie wizyt z poprzedniego miesiąca
         $visits = Visit::query()
             ->whereBetween('date', [$prevMonthStart, $prevMonthEnd])
             ->leftJoin('doctors', 'visits.doctor_id', '=', 'doctors.id')
@@ -39,6 +38,8 @@ class MonthlyVisitsSummaryController extends Controller
             ->get();
 
         $report = [];
+        $clubSummary = []; // podsumowanie wszystkich klubów
+        $clubTypes = ['AWF', 'WKS', 'Klub gimnastyki'];
 
         foreach ($visits as $visit) {
             $doctorId = $visit->doctor_id ?? 'brak';
@@ -46,11 +47,12 @@ class MonthlyVisitsSummaryController extends Controller
             $type = $visit->rodzaj_pacjenta ?? 'Brak';
             $patientName = $visit->patient_name ?? 'Nieznany pacjent';
 
+            // Raport lekarza
             if (!isset($report[$doctorId])) {
                 $report[$doctorId] = [
                     'doctor' => $doctorName,
                     'total' => 0,
-                    'types' => [], // typy pacjentów -> liczba + lista pacjentów
+                    'types' => [],
                 ];
             }
 
@@ -64,6 +66,18 @@ class MonthlyVisitsSummaryController extends Controller
             $report[$doctorId]['types'][$type]['count'] += 1;
             $report[$doctorId]['types'][$type]['patients'][] = $patientName;
             $report[$doctorId]['total'] += 1;
+
+            // Podsumowanie klubów
+            if (in_array($type, $clubTypes)) {
+                if (!isset($clubSummary[$type])) {
+                    $clubSummary[$type] = [
+                        'count' => 0,
+                        'patients' => [],
+                    ];
+                }
+                $clubSummary[$type]['count'] += 1;
+                $clubSummary[$type]['patients'][] = $patientName;
+            }
         }
 
         // jeśli brak wizyt
@@ -75,7 +89,7 @@ class MonthlyVisitsSummaryController extends Controller
             ];
         }
 
-        return new MonthlyVisitsSummaryMail($report, $monthLabel);
+        return new MonthlyVisitsSummaryMail($report, $monthLabel, $clubSummary);
     }
 
     /**

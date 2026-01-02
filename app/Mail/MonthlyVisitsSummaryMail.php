@@ -12,11 +12,13 @@ class MonthlyVisitsSummaryMail extends Mailable
 
     public array $report;
     public string $month;
+    public array $clubSummary;
 
-    public function __construct(array $report, string $month)
+    public function __construct(array $report, string $month, array $clubSummary = [])
     {
         $this->report = $report;
         $this->month = $month;
+        $this->clubSummary = $clubSummary;
     }
 
     public function build()
