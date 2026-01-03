@@ -26,7 +26,7 @@ class SmsController extends Controller
                 Fizjoterapia Kaczmarek,
                 tel 697703263'
             );
-            $sms->from = 'Test';
+            $sms->from = 'Kaczmarek';
 
             // Wyślij SMS
             $response = $service->smsFeature()->sendSms($sms);

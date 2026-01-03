@@ -21,12 +21,8 @@ Route::get('/run-reminders', function () {
 
 Route::get('/slots/roll-today', [DoctorSlotController::class, 'rollTodaySlots']);
 
+// Testowa trasa do wysyłki SMS
 Route::get('/send-sms', [SmsController::class, 'sendSms']);
-
-// Route::get('/visits-type', function () {
-//     $visit = Visit::find(2); // przykładowa wizyta
-//     return new VisitReminderMail($visit);
-// });
 
 Route::get('/visits-type', [MonthlyVisitsSummaryController::class, 'preview']);
 
