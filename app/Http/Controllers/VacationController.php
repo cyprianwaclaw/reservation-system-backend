@@ -372,6 +372,7 @@ public function index(Request $request)
                     'doctor_id'      => $doc->id,
                     'doctor_name'    => $doc->name,
                     'doctor_surname' => $doc->surname,
+                        'notes' => $doc->notes,
                     'start_date'     => $currentDate->format('Y-m-d'),
                     'end_date'       => $currentDate->format('Y-m-d'),
                     'start_time'     => $dayStart->format('H:i'),
