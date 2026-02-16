@@ -15,6 +15,22 @@ use Carbon\CarbonPeriod;
 class VacationController extends Controller
 {
 
+public function updateNotes(Request $request, Vacation $vacation)
+{
+    $validated = $request->validate([
+        'notes' => 'nullable|string'
+    ]);
+
+    $vacation->update([
+        'notes' => $validated['notes']
+    ]);
+
+    return response()->json([
+        'message' => 'Notes updated successfully',
+        'data' => $vacation
+    ]);
+}
+
     public function indexTest(Request $request)
 {
         //         $week = $request->query('week');

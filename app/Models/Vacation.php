@@ -12,6 +12,7 @@ class Vacation extends Model
         'end_date',
         'start_time',
         'end_time',
+        'notes',
     ];
 
     public function doctor()
