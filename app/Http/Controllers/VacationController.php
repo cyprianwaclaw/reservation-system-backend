@@ -434,7 +434,7 @@ public function index(Request $request)
             'doctor_name'    => $vacation->doctor->name,
             'doctor_surname' => $vacation->doctor->surname,
             'start_date'     => $vacation->start_date,
-                'notes' => $doc->notes,
+                'notes' => $vacation->notes,
             'end_date'       => $vacation->end_date,
             'start_time'     => $vacation->start_time,
             'end_time'       => $vacation->end_time,
