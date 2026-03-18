@@ -1090,7 +1090,8 @@ public function reserve(NewVisitRequest $request)
 
     $visit = Visit::create([
         'doctor_id'  => $request->doctor_id,
-        'type'       => $request->type,
+            // type error
+        'type' => $request->type ?: 'wizyta',
         'user_id'    => $user->id,
         'date'       => $reservationStart->toDateString(),
         'start_time' => $reservationStart->format('H:i'),
