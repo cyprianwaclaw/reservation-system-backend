@@ -1797,23 +1797,50 @@ $visits = $user->visits()
 
 
     // Anulowanie wizyty
-    public function cancel($id)
-    {
-        $visit = Visit::find($id);
+    // public function cancel($id)
+    // {
+    //     $visit = Visit::find($id);
 
-        if (!$visit) {
-            return response()->json(['message' => 'Nie znaleziono rezerwacji'], 404);
-        }
+    //     if (!$visit) {
+    //         return response()->json(['message' => 'Nie znaleziono rezerwacji'], 404);
+    //     }
 
-        // Wyślij mail tylko jeśli user ma email
-        if ($visit->user && !empty($visit->user->email)) {
-            Mail::to($visit->user->email)->send(new VisitCancelledMail($visit));
-        }
+    //     // Wyślij mail tylko jeśli user ma email
+    //     if ($visit->user && !empty($visit->user->email)) {
+    //         Mail::to($visit->user->email)->send(new VisitCancelledMail($visit));
+    //     }
 
-        $visit->delete();
+    //     $visit->delete();
 
-        return response()->json(['message' => 'Anulowano i wysłano powiadomienie e-mail']);
+    //     return response()->json(['message' => 'Anulowano i wysłano powiadomienie e-mail']);
+    // }
+public function cancel(Request $request, $id)
+{
+    // Oczekujemy user_id w body requestu
+    $userId = $request->input('user_id');
+
+    if (!$userId) {
+        return response()->json(['message' => 'Nie podano user_id'], 400);
     }
+
+    // Szukamy wizyty o danym ID i user_id
+    $visit = Visit::where('id', $id)
+                  ->where('user_id', $userId)
+                  ->first();
+
+    if (!$visit) {
+        return response()->json(['message' => 'Nie znaleziono wizyty dla tego użytkownika'], 404);
+    }
+
+    // Wyślij mail tylko jeśli user ma email
+    if ($visit->user && !empty($visit->user->email)) {
+        Mail::to($visit->user->email)->send(new VisitCancelledMail($visit));
+    }
+
+    $visit->delete();
+
+    return response()->json(['message' => 'Anulowano wizytę i wysłano powiadomienie e-mail']);
+}
 
     public function loginDoctor(DoctorLoginRequest $request)
     {
