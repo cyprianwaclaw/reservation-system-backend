@@ -7,10 +7,10 @@ use App\Models\Visit;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\VisitReminderMail;
+use App\Mail\VisitReminderFridayDoctorMail;
 use Carbon\Carbon;
 use Smsapi\Client\Curl\SmsapiHttpClient;
 use Smsapi\Client\Feature\Sms\Bag\SendSmsBag;
-use App\Mail\VisitReminderFridayDoctorMail;
 
 class CheckTomorrowVisits extends Command
 {
@@ -59,9 +59,6 @@ class CheckTomorrowVisits extends Command
                 continue;
             }
 
-            // -----------------------------------
-            // WARUNKI
-            // -----------------------------------
             $visitDate = Carbon::parse($visit->date);
             $visitTime = Carbon::parse($visit->date . ' ' . $visit->start_time)->format('H:i');
 
@@ -73,16 +70,16 @@ class CheckTomorrowVisits extends Command
             // E-MAIL
             // -----------------------------------
             if ($user->email) {
-                if ($isSpecial) {
-                    Mail::to($user->email)->send(
-                        new VisitReminderFridayDoctorMail($visit)
-                    );
-                    Log::info('[MAIL] Specjalny (PIĄTEK + LEKARZ 1) → ' . $user->email);
-                } else {
-                    Mail::to($user->email)->send(
-                        new VisitReminderMail($visit)
-                    );
-                    Log::info('[MAIL] Standardowy → ' . $user->email);
+                try {
+                    if ($isSpecial) {
+                        Mail::to($user->email)->send(new VisitReminderFridayDoctorMail($visit));
+                        Log::info('[MAIL] Specjalny → ' . $user->email);
+                    } else {
+                        Mail::to($user->email)->send(new VisitReminderMail($visit));
+                        Log::info('[MAIL] Standardowy → ' . $user->email);
+                    }
+                } catch (\Throwable $e) {
+                    Log::error("[CheckTomorrowVisits] Błąd maila ({$user->email}): " . $e->getMessage());
                 }
             }
 
@@ -92,32 +89,18 @@ class CheckTomorrowVisits extends Command
             if ($user->phone) {
                 try {
                     $name = $user->name;
-
-                    if ($isSpecial) {
-                        $message = "Czesc $name,\n" .
-                            "zapraszamy jutro o $visitTime.\n" .
-                            "na wizyte w Raciborowicach \n" .
-                            "ul. Krajobrazowa 15L.\n" .
-                            "Zmiana terminu: 697703263\n\n" .
-                            "Fizjoterapia Kaczmarek";
-                    } else {
-                        $message = "Czesc $name,\n" .
-                            "zapraszamy jutro o $visitTime\n" .
-                            "na wizyte w budynku basenu AWF pietro -1\n" .
-                            "Zmiana terminu: 697703263\n\n" .
-                            "Fizjoterapia Kaczmarek";
-                    }
+                    $message = $isSpecial
+                        ? "Czesc $name,\nzapraszamy jutro o $visitTime.\nna wizyte w Raciborowicach\nul. Krajobrazowa 15L.\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek"
+                        : "Czesc $name,\nzapraszamy jutro o $visitTime\nna wizyte w budynku basenu AWF pietro -1\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek";
 
                     $sms = SendSmsBag::withMessage(
                         '48' . preg_replace('/\D/', '', $user->phone),
                         $this->normalizeMessage($message)
                     );
-
                     $sms->from = 'Kaczmarek';
                     $service->smsFeature()->sendSms($sms);
 
-                    Log::info('[SMS] ' . ($isSpecial ? 'SPECJALNY' : 'STANDARD') .
-                        ' → ' . $user->phone);
+                    Log::info('[SMS] ' . ($isSpecial ? 'SPECJALNY' : 'STANDARD') . ' → ' . $user->phone);
                 } catch (\Throwable $e) {
                     Log::error("[CheckTomorrowVisits] Błąd SMS ({$user->phone}): " . $e->getMessage());
                 }
@@ -125,6 +108,8 @@ class CheckTomorrowVisits extends Command
 
             $this->info("Powiadomienia wysłane do {$user->name}");
         }
+
+        Log::info('[CheckTomorrowVisits] Wszystkie wizyty przetworzone.');
     }
 
     /**
@@ -133,24 +118,10 @@ class CheckTomorrowVisits extends Command
     private function normalizeMessage(string $text): string
     {
         return strtr($text, [
-            'ą' => 'a',
-            'ć' => 'c',
-            'ę' => 'e',
-            'ł' => 'l',
-            'ń' => 'n',
-            'ó' => 'o',
-            'ś' => 's',
-            'ź' => 'z',
-            'ż' => 'z',
-            'Ą' => 'A',
-            'Ć' => 'C',
-            'Ę' => 'E',
-            'Ł' => 'L',
-            'Ń' => 'N',
-            'Ó' => 'O',
-            'Ś' => 'S',
-            'Ź' => 'Z',
-            'Ż' => 'Z',
+            'ą' => 'a', 'ć' => 'c', 'ę' => 'e', 'ł' => 'l', 'ń' => 'n',
+            'ó' => 'o', 'ś' => 's', 'ź' => 'z', 'ż' => 'z',
+            'Ą' => 'A', 'Ć' => 'C', 'Ę' => 'E', 'Ł' => 'L', 'Ń' => 'N',
+            'Ó' => 'O', 'Ś' => 'S', 'Ź' => 'Z', 'Ż' => 'Z',
         ]);
     }
 }
