@@ -49,65 +49,151 @@ class CheckTomorrowVisits extends Command
         $token = env('SMSAPI_TOKEN');
         $client = new SmsapiHttpClient();
         $service = $client->smsapiPLService($token);
-
+        
+        //------------------------
+        //foreach send with delay
+        //------------------------
         foreach ($visits as $visit) {
 
-            $user = $visit->user;
+    $user = $visit->user;
 
-            if (!$user) {
-                Log::warning("[CheckTomorrowVisits] Wizyta ID {$visit->id} bez użytkownika");
-                continue;
-            }
+    if (!$user) {
+        Log::warning("[CheckTomorrowVisits] Wizyta ID {$visit->id} bez użytkownika");
+        continue;
+    }
 
-            $visitDate = Carbon::parse($visit->date);
-            $visitTime = Carbon::parse($visit->date . ' ' . $visit->start_time)->format('H:i');
+    $visitDate = Carbon::parse($visit->date);
+    $visitTime = Carbon::parse($visit->date . ' ' . $visit->start_time)->format('H:i');
 
-            $isFriday = $visitDate->isFriday();
-            $isDoctorOne = $visit->doctor_id === 1;
-            $isSpecial = $isFriday && $isDoctorOne;
+    $isFriday = $visitDate->isFriday();
+    $isDoctorOne = $visit->doctor_id === 1;
+    $isSpecial = $isFriday && $isDoctorOne;
 
-            // -----------------------------------
-            // E-MAIL
-            // -----------------------------------
-            if ($user->email) {
-                try {
-                    if ($isSpecial) {
-                        Mail::to($user->email)->send(new VisitReminderFridayDoctorMail($visit));
-                        Log::info('[MAIL] Specjalny → ' . $user->email);
-                    } else {
-                        Mail::to($user->email)->send(new VisitReminderMail($visit));
-                        Log::info('[MAIL] Standardowy → ' . $user->email);
-                    }
-                } catch (\Throwable $e) {
-                    Log::error("[CheckTomorrowVisits] Błąd maila ({$user->email}): " . $e->getMessage());
+    // -----------------------------------
+    // 🔥 MAIL (retry + delay)
+    // -----------------------------------
+    if ($user->email) {
+        try {
+
+            retry(3, function () use ($user, $visit, $isSpecial) {
+
+                if ($isSpecial) {
+                    Mail::to($user->email)->send(new VisitReminderFridayDoctorMail($visit));
+                } else {
+                    Mail::to($user->email)->send(new VisitReminderMail($visit));
                 }
-            }
 
-            // -----------------------------------
-            // SMS
-            // -----------------------------------
-            if ($user->phone) {
-                try {
-                    $name = $user->name;
-                    $message = $isSpecial
-                        ? "Czesc $name,\nzapraszamy jutro o $visitTime.\nna wizyte w Raciborowicach\nul. Krajobrazowa 15L.\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek"
-                        : "Czesc $name,\nzapraszamy jutro o $visitTime\nna wizyte w budynku basenu AWF pietro -1\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek";
+            }, 1000); // 1s między próbami
 
-                    $sms = SendSmsBag::withMessage(
-                        '48' . preg_replace('/\D/', '', $user->phone),
-                        $this->normalizeMessage($message)
-                    );
-                    $sms->from = 'Kaczmarek';
-                    $service->smsFeature()->sendSms($sms);
+            Log::info('[MAIL] ' . ($isSpecial ? 'Specjalny' : 'Standardowy') . ' → ' . $user->email);
 
-                    Log::info('[SMS] ' . ($isSpecial ? 'SPECJALNY' : 'STANDARD') . ' → ' . $user->phone);
-                } catch (\Throwable $e) {
-                    Log::error("[CheckTomorrowVisits] Błąd SMS ({$user->phone}): " . $e->getMessage());
-                }
-            }
-
-            $this->info("Powiadomienia wysłane do {$user->name}");
+        } catch (\Throwable $e) {
+            Log::error("[CheckTomorrowVisits] Błąd maila ({$user->email}): " . $e->getMessage());
         }
+
+        usleep(400000); // 🔥 0.4s przerwy po mailu
+    }
+
+    // -----------------------------------
+    // 🔥 SMS (retry + delay)
+    // -----------------------------------
+    if ($user->phone) {
+        try {
+
+            retry(3, function () use ($service, $user, $visitTime, $isSpecial) {
+
+                $name = $user->name;
+
+                $message = $isSpecial
+                    ? "Czesc $name,\nzapraszamy jutro o $visitTime.\nna wizyte w Raciborowicach\nul. Krajobrazowa 15L.\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek"
+                    : "Czesc $name,\nzapraszamy jutro o $visitTime\nna wizyte w budynku basenu AWF pietro -1\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek";
+
+                $sms = SendSmsBag::withMessage(
+                    '48' . preg_replace('/\D/', '', $user->phone),
+                    $this->normalizeMessage($message)
+                );
+
+                $sms->from = 'Kaczmarek';
+
+                $service->smsFeature()->sendSms($sms);
+
+            }, 1000); // 1s retry
+
+            Log::info('[SMS] ' . ($isSpecial ? 'SPECJALNY' : 'STANDARD') . ' → ' . $user->phone);
+
+        } catch (\Throwable $e) {
+            Log::error("[CheckTomorrowVisits] Błąd SMS ({$user->phone}): " . $e->getMessage());
+        }
+
+        usleep(400000); // 🔥 0.4s przerwy po SMS
+    }
+
+    // -----------------------------------
+    // 🔥 GLOBALNY DELAY (mega ważne)
+    // -----------------------------------
+    usleep(300000); // 0.3s między użytkownikami
+
+    $this->info("Powiadomienia wysłane do {$user->name}");
+}
+
+        // foreach ($visits as $visit) {
+
+        //     $user = $visit->user;
+
+        //     if (!$user) {
+        //         Log::warning("[CheckTomorrowVisits] Wizyta ID {$visit->id} bez użytkownika");
+        //         continue;
+        //     }
+
+        //     $visitDate = Carbon::parse($visit->date);
+        //     $visitTime = Carbon::parse($visit->date . ' ' . $visit->start_time)->format('H:i');
+
+        //     $isFriday = $visitDate->isFriday();
+        //     $isDoctorOne = $visit->doctor_id === 1;
+        //     $isSpecial = $isFriday && $isDoctorOne;
+
+        //     // -----------------------------------
+        //     // E-MAIL
+        //     // -----------------------------------
+        //     if ($user->email) {
+        //         try {
+        //             if ($isSpecial) {
+        //                 Mail::to($user->email)->send(new VisitReminderFridayDoctorMail($visit));
+        //                 Log::info('[MAIL] Specjalny → ' . $user->email);
+        //             } else {
+        //                 Mail::to($user->email)->send(new VisitReminderMail($visit));
+        //                 Log::info('[MAIL] Standardowy → ' . $user->email);
+        //             }
+        //         } catch (\Throwable $e) {
+        //             Log::error("[CheckTomorrowVisits] Błąd maila ({$user->email}): " . $e->getMessage());
+        //         }
+        //     }
+
+        //     // -----------------------------------
+        //     // SMS
+        //     // -----------------------------------
+        //     if ($user->phone) {
+        //         try {
+        //             $name = $user->name;
+        //             $message = $isSpecial
+        //                 ? "Czesc $name,\nzapraszamy jutro o $visitTime.\nna wizyte w Raciborowicach\nul. Krajobrazowa 15L.\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek"
+        //                 : "Czesc $name,\nzapraszamy jutro o $visitTime\nna wizyte w budynku basenu AWF pietro -1\nZmiana terminu: 697703263\n\nFizjoterapia Kaczmarek";
+
+        //             $sms = SendSmsBag::withMessage(
+        //                 '48' . preg_replace('/\D/', '', $user->phone),
+        //                 $this->normalizeMessage($message)
+        //             );
+        //             $sms->from = 'Kaczmarek';
+        //             $service->smsFeature()->sendSms($sms);
+
+        //             Log::info('[SMS] ' . ($isSpecial ? 'SPECJALNY' : 'STANDARD') . ' → ' . $user->phone);
+        //         } catch (\Throwable $e) {
+        //             Log::error("[CheckTomorrowVisits] Błąd SMS ({$user->phone}): " . $e->getMessage());
+        //         }
+        //     }
+
+        //     $this->info("Powiadomienia wysłane do {$user->name}");
+        // }
 
         Log::info('[CheckTomorrowVisits] Wszystkie wizyty przetworzone.');
     }
