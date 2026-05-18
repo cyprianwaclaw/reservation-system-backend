@@ -8,6 +8,8 @@ use App\Models\Doctor;
 use App\Models\Schedule;
 use App\Models\User;
 use App\Models\Vacation;
+use App\Models\DoctorWorkingDay;
+// use App\Models\DoctorWorkingHour;
 use App\Models\Visit;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -113,6 +115,71 @@ class ScheduleController extends Controller
     // }}
 
     private function generateDailySlots(int $doctorId, Carbon $date, int $slotLengthMinutes = 45): array
+{
+    // 1. Sprawdź, czy jest rekord dla konkretnego dnia
+    $workingDay = DoctorWorkingDay::where('doctor_id', $doctorId)
+        ->where('date', $date->toDateString())
+        ->first();
+
+    if ($workingDay) {
+        $workStart = Carbon::parse("{$date->toDateString()} {$workingDay->start_time}");
+        $workEnd   = Carbon::parse("{$date->toDateString()} {$workingDay->end_time}");
+    } else {
+        // fallback na godziny tygodniowe
+        $dayOfWeek = $date->dayOfWeekIso; // 1 = poniedziałek
+        $workingHour = DoctorWorkingHour::where('doctor_id', $doctorId)
+            ->where('day_of_week', $dayOfWeek)
+            ->first();
+
+        if (!$workingHour) {
+            return []; // lekarz nie pracuje tego dnia
+        }
+
+        $workStart = Carbon::parse("{$date->toDateString()} {$workingHour->start_time}");
+        $workEnd   = Carbon::parse("{$date->toDateString()} {$workingHour->end_time}");
+    }
+
+    // 2. Pobierz przerwy/wakacje
+    $vacations = Vacation::where('doctor_id', $doctorId)
+        ->whereDate('start_date', '<=', $date)
+        ->whereDate('end_date', '>=', $date)
+        ->get();
+
+    $blockedPeriods = $vacations->map(function ($v) use ($date) {
+        if ($v->start_time && $v->end_time) {
+            return [
+                'start' => Carbon::parse("{$date->toDateString()} {$v->start_time}"),
+                'end' => Carbon::parse("{$date->toDateString()} {$v->end_time}"),
+            ];
+        }
+        return null;
+    })->filter()->values();
+
+    // 3. Generuj sloty
+    $slots = [];
+    $current = $workStart->copy();
+
+    while ($current->lt($workEnd)) {
+        $slotEnd = $current->copy()->addMinutes($slotLengthMinutes);
+        if ($slotEnd->gt($workEnd)) break;
+
+        $isBlocked = $blockedPeriods->contains(fn($p) => $slotEnd->gt($p['start']) && $current->lt($p['end']));
+        $isReserved = Visit::where('doctor_id', $doctorId)
+            ->whereDate('date', $date->toDateString())
+            ->where('start_time', '<', $slotEnd->format('H:i'))
+            ->where('end_time', '>', $current->format('H:i'))
+            ->exists();
+
+        if (!$isBlocked && !$isReserved) {
+            $slots[] = $current->format('H:i');
+        }
+
+        $current->addMinutes($slotLengthMinutes);
+    }
+
+    return $slots;
+}
+    private function generateDailySlotsOld(int $doctorId, Carbon $date, int $slotLengthMinutes = 45): array
     {
         $dayOfWeek = $date->dayOfWeekIso; // 1 = poniedziałek, 7 = niedziela
 
@@ -1927,7 +1994,73 @@ public function cancel(Request $request, $id)
     //     return response()->json($result);
     // }
 
-    public function getDoctorWorkingHours()
+    public function getDoctorWorkingHours(?string $start_date = null, ?string $end_date = null)
+{
+    $startDate = $start_date ? Carbon::parse($start_date) : Carbon::today();
+    $endDate   = $end_date ? Carbon::parse($end_date) : $startDate->copy()->addMonth();
+
+    $doctors = Doctor::all();
+
+    $grouped = [];
+
+    foreach ($doctors as $doctor) {
+        $grouped[$doctor->id] = [
+            'doctor_id' => $doctor->id,
+            'doctor_name' => "{$doctor->name} {$doctor->surname}",
+            'hours' => [],
+        ];
+
+        // Pobierz wszystkie indywidualne dni w zakresie
+        $workingDays = DoctorWorkingDay::where('doctor_id', $doctor->id)
+            ->whereBetween('date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->get()
+            ->keyBy('date');
+
+        // Pobierz standardowe godziny tygodniowe
+        $weeklyHours = DoctorWorkingHour::where('doctor_id', $doctor->id)->get()->keyBy('day_of_week');
+
+        $current = $startDate->copy();
+        while ($current->lte($endDate)) {
+            if ($current->isWeekend()) {
+                $current->addDay();
+                continue; // pomijamy weekend
+            }
+
+            $dayStr = $current->toDateString();
+
+            if (isset($workingDays[$dayStr])) {
+                // konkretny dzień
+                $wd = $workingDays[$dayStr];
+                $startTime = Carbon::parse($wd->start_time)->format('H:i');
+                $endTime   = Carbon::parse($wd->end_time)->format('H:i');
+            } else {
+                // standardowy dzień tygodnia
+                $dow = $current->dayOfWeekIso;
+                if (isset($weeklyHours[$dow])) {
+                    $wh = $weeklyHours[$dow];
+                    $startTime = Carbon::parse($wh->start_time)->format('H:i');
+                    $endTime   = Carbon::parse($wh->end_time)->format('H:i');
+                } else {
+                    // jeśli nie ma nawet standardowej godziny, daj np. null lub 00:00-00:00
+                    $startTime = '00:00';
+                    $endTime   = '00:00';
+                }
+            }
+
+            $grouped[$doctor->id]['hours'][] = [
+                'date' => $dayStr,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+            ];
+
+            $current->addDay();
+        }
+    }
+
+    return response()->json(array_values($grouped));
+}
+
+    public function getDoctorWorkingHours1()
     {
         $hours = DoctorWorkingHour::with('doctor')->get();
 
@@ -2073,6 +2206,40 @@ public function cancel(Request $request, $id)
         }
 
         return response()->json(['message' => 'Godziny pracy zaktualizowane']);
+    }
+    public function updateDoctorWorkingDays(Request $request, $doctorId)
+    {
+        Log::info('🔥 SAVE DAYS', $request->all());
+
+        $request->validate([
+            'hours' => 'required|array',
+            'hours.*.date' => 'required|date',
+            'hours.*.start_time' => 'required|date_format:H:i',
+            'hours.*.end_time' => 'required|date_format:H:i|after:start_time',
+        ]);
+
+        foreach ($request->hours as $hour) {
+
+            $existing = \App\Models\DoctorWorkingDay::where('doctor_id', $doctorId)
+                ->where('date', $hour['date'])
+                ->first();
+
+            if ($existing) {
+                $existing->update([
+                    'start_time' => $hour['start_time'],
+                    'end_time' => $hour['end_time'],
+                ]);
+            } else {
+                \App\Models\DoctorWorkingDay::create([
+                    'doctor_id' => $doctorId,
+                    'date' => $hour['date'],
+                    'start_time' => $hour['start_time'],
+                    'end_time' => $hour['end_time'],
+                ]);
+            }
+        }
+
+        return response()->json(['message' => 'Zapisano dni pracy']);
     }
 
     public function deleteDoctorWorkingHour($id)

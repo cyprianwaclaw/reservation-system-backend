@@ -134,7 +134,7 @@ class VisitObserver
                 'doctor_id'  => $oldDoctorId,
                 'date'       => $oldDate,
                 'start_time' => $oldStart,
-                'end_time'   => $oldEndCarbon->format('H:i:s'),
+                'end_time'   => $oldEndCarbon->format('H:i'),
             ]);
             $oldVisit->id = $visit->id;
 
@@ -146,7 +146,7 @@ class VisitObserver
             $newEndCarbon   = $newStartCarbon->copy()->addMinutes($visit->duration ?? 45);
 
             // Ustawiamy end_time w modelu, aby markReserved wiedział
-            $visit->end_time = $newEndCarbon->format('H:i:s');
+            $visit->end_time = $newEndCarbon->format('H:i');
 
             Log::info("Marking new reserved slots for visit {$visit->id}");
             $this->service->markReserved($visit);

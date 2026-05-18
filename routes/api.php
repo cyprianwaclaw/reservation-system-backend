@@ -81,6 +81,7 @@ Route::middleware('auth:sanctum')->group(
         Route::post('/doctor/set-working-hours', [ScheduleController::class, 'setDoctorWorkingHours']);
         Route::get('/doctor/working-hours', [ScheduleController::class, 'getDoctorWorkingHours']);
         Route::put('/doctor/{id}/working-hours', [ScheduleController::class, 'updateDoctorWorkingHours']);
+        Route::put('/doctor/{id}/working-days', [ScheduleController::class, 'updateDoctorWorkingDays']);
         Route::delete('/doctor/working-hours/{id}', [ScheduleController::class, 'deleteDoctorWorkingHour']);
     }
 );
