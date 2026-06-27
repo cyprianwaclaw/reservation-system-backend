@@ -8,7 +8,9 @@ use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use App\Models\DoctorWorkingHour;
+// use App\Models\DoctorWorkingHour;
+use App\Models\DoctorWorkingDay;
+
 
 class DoctorSlotController extends Controller
 {
@@ -208,94 +210,202 @@ class DoctorSlotController extends Controller
     // }
 
 
-    public function getSlotsRange(Request $request)
-{
-    $validated = $request->validate([
-        'doctor_id' => 'nullable|integer|exists:doctors,id',
-        'from' => 'required|date',
-        'to' => 'required|date|after_or_equal:from',
-        'type' => 'nullable|in:available,reserved,vacation,all',
-        'current_time' => 'nullable|date_format:H:i',
-    ]);
+//     public function getSlotsRange(Request $request)
+// {
+//     $validated = $request->validate([
+//         'doctor_id' => 'nullable|integer|exists:doctors,id',
+//         'from' => 'required|date',
+//         'to' => 'required|date|after_or_equal:from',
+//         'type' => 'nullable|in:available,reserved,vacation,all',
+//         'current_time' => 'nullable|date_format:H:i',
+//     ]);
 
-    $doctorId = $validated['doctor_id'] ?? null;
-    $from = Carbon::parse($validated['from'])->toDateString();
-    $to = Carbon::parse($validated['to'])->toDateString();
-    $type = $validated['type'] ?? 'all';
+//     $doctorId = $validated['doctor_id'] ?? null;
+//     $from = Carbon::parse($validated['from'])->toDateString();
+//     $to = Carbon::parse($validated['to'])->toDateString();
+//     $type = $validated['type'] ?? 'all';
 
-    $today = Carbon::now()->toDateString();
-    $currentTime = $validated['current_time'] ?? Carbon::now()->toTimeString();
+//     $today = Carbon::today()->toDateString();
+//     $currentTime = $validated['current_time'] ?? Carbon::now()->format('H:i');
 
-    // 1️⃣ Pobierz wszystkie sloty w zakresie
-    $slots = DoctorSlot::query()
-        ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
-        ->whereDate('date', '>=', $from)
-        ->whereDate('date', '<=', $to)
-        ->when($doctorId, fn($q) => $q->where('doctor_id', $doctorId))
-        ->when($type !== 'all', fn($q) => $q->where('type', $type))
-        ->orderBy('date')
-        ->orderBy('start_time')
-        ->get();
+//     // 1️⃣ Pobierz sloty
+//     $slots = DoctorSlot::query()
+//         ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
+//         ->whereDate('date', '>=', $from)
+//         ->whereDate('date', '<=', $to)
+//         ->when($doctorId, fn ($q) => $q->where('doctor_id', $doctorId))
+//         ->when($type !== 'all', fn ($q) => $q->where('type', $type))
+//         ->orderBy('date')
+//         ->orderBy('start_time')
+//         ->get();
 
-    // 2️⃣ Pobierz wszystkie godziny pracy dla tych doktorów w jednym zapytaniu
-    $doctorIds = $slots->pluck('doctor_id')->unique()->toArray();
-    $workingHours = DoctorWorkingHour::whereIn('doctor_id', $doctorIds)->get();
+//     if ($slots->isEmpty()) {
+//         return response()->json([]);
+//     }
 
-    // 3️⃣ Zmapuj godziny pracy do tablicy [doctor_id][day_of_week]
-    $workingMap = [];
-    foreach ($workingHours as $wh) {
-        $workingMap[$wh->doctor_id][$wh->day_of_week] = $wh;
-    }
+//     // 2️⃣ Pobierz dni pracy (NOWE)
+//     $doctorIds = $slots->pluck('doctor_id')->unique()->toArray();
 
-    // 4️⃣ Filtruj sloty wg godzin pracy i current_time
-    $slots = $slots->filter(function ($slot) use ($workingMap, $today, $currentTime) {
-        $slotDate = Carbon::parse($slot->date);
-        $dayOfWeek = $slotDate->dayOfWeek; // 0 = niedziela, 1 = poniedziałek, ...
+//     $workingDays = DoctorWorkingDay::query()
+//         ->whereIn('doctor_id', $doctorIds)
+//         ->whereBetween('date', [$from, $to])
+//         ->get();
 
-        if (!isset($workingMap[$slot->doctor_id][$dayOfWeek])) {
-            return false; // brak godzin pracy → nie pokazuj slotu
-        }
+//     // 3️⃣ mapa [doctor_id][date]
+//     $workingMap = [];
 
-        $wh = $workingMap[$slot->doctor_id][$dayOfWeek];
+//     foreach ($workingDays as $day) {
+//         $workingMap[$day->doctor_id][$day->date] = $day;
+//     }
 
-        // filtr godzin pracy
-        if ($slot->start_time < $wh->start_time || $slot->end_time > $wh->end_time) {
-            return false;
-        }
+//     // 4️⃣ filtr
+//     $slots = $slots->filter(function ($slot) use ($workingMap, $today, $currentTime) {
 
-        // jeśli slot jest dzisiaj → uwzględnij current_time
-        if ($slot->date === $today && $slot->start_time <= $currentTime) {
-            return false;
-        }
+//         $date = Carbon::parse($slot->date)->toDateString();
 
-        return true;
-    });
+//         // brak dnia pracy → odrzucamy
+//         if (!isset($workingMap[$slot->doctor_id][$date])) {
+//             return false;
+//         }
 
-    // 5️⃣ Mapowanie slotów na format JSON
-    $slots = $slots->map(function ($slot) {
-        return [
-            'doctor_id' => (int) $slot->doctor_id,
-            'date' => $slot->date,
-            'start_time' => $slot->start_time,
-            'end_time' => $slot->end_time,
-            'type' => $slot->type,
-            'visit_id' => $slot->visit_id ? (int) $slot->visit_id : null,
-        ];
-    })
-    ->unique(fn($slot) => "{$slot['doctor_id']}_{$slot['date']}_{$slot['start_time']}_{$slot['end_time']}")
-    ->values()
-    ->groupBy(fn($slot) => $slot['doctor_id'] . '|' . $slot['date'])
-    ->map(fn($slotsForDay) => [
-        'doctor_id' => $slotsForDay->first()['doctor_id'],
-        'date' => $slotsForDay->first()['date'],
-        'all_day_free' => $slotsForDay->every(fn($s) => $s['type'] === 'available'),
-        'slots' => $slotsForDay->sortBy('start_time')->values(),
-    ])
-    ->values();
+//         $workingDay = $workingMap[$slot->doctor_id][$date];
+
+//         $slotStart = Carbon::parse($slot->start_time);
+//         $slotEnd = Carbon::parse($slot->end_time);
+
+//         $workStart = Carbon::parse($workingDay->start_time);
+//         $workEnd = Carbon::parse($workingDay->end_time);
+
+//         // poza godzinami pracy
+//         if ($slotStart->lt($workStart) || $slotEnd->gt($workEnd)) {
+//             return false;
+//         }
+
+//         // usuń przeszłe sloty dziś
+//         if ($date === $today && $slotStart->lte(Carbon::parse($currentTime))) {
+//             return false;
+//         }
+
+//         return true;
+//     });
+
+//     // 5️⃣ formatowanie
+//     $slots = $slots->map(function ($slot) {
+//         return [
+//             'doctor_id' => (int) $slot->doctor_id,
+//             'date' => $slot->date,
+//             'start_time' => $slot->start_time,
+//             'end_time' => $slot->end_time,
+//             'type' => $slot->type,
+//             'visit_id' => $slot->visit_id ? (int) $slot->visit_id : null,
+//         ];
+//     })
+//     ->unique(fn ($slot) =>
+//         "{$slot['doctor_id']}_{$slot['date']}_{$slot['start_time']}_{$slot['end_time']}"
+//     )
+//     ->values()
+//     ->groupBy(fn ($slot) => $slot['doctor_id'] . '|' . $slot['date'])
+//     ->map(fn ($slotsForDay) => [
+//         'doctor_id' => $slotsForDay->first()['doctor_id'],
+//         'date' => $slotsForDay->first()['date'],
+//         'all_day_free' => $slotsForDay->every(
+//             fn ($s) => $s['type'] === 'available'
+//         ),
+//         'slots' => $slotsForDay->sortBy('start_time')->values(),
+//     ])
+//     ->values();
+
+//     return response()->json($slots);
+// }
+
+//     public function getSlotsRange(Request $request)
+// {
+//     $validated = $request->validate([
+//         'doctor_id' => 'nullable|integer|exists:doctors,id',
+//         'from' => 'required|date',
+//         'to' => 'required|date|after_or_equal:from',
+//         'type' => 'nullable|in:available,reserved,vacation,all',
+//         'current_time' => 'nullable|date_format:H:i',
+//     ]);
+
+//     $doctorId = $validated['doctor_id'] ?? null;
+//     $from = Carbon::parse($validated['from'])->toDateString();
+//     $to = Carbon::parse($validated['to'])->toDateString();
+//     $type = $validated['type'] ?? 'all';
+
+//     $today = Carbon::now()->toDateString();
+//     $currentTime = $validated['current_time'] ?? Carbon::now()->toTimeString();
+
+//     // 1️⃣ Pobierz wszystkie sloty w zakresie
+//     $slots = DoctorSlot::query()
+//         ->select(['doctor_id', 'date', 'start_time', 'end_time', 'type', 'visit_id'])
+//         ->whereDate('date', '>=', $from)
+//         ->whereDate('date', '<=', $to)
+//         ->when($doctorId, fn($q) => $q->where('doctor_id', $doctorId))
+//         ->when($type !== 'all', fn($q) => $q->where('type', $type))
+//         ->orderBy('date')
+//         ->orderBy('start_time')
+//         ->get();
+
+//     // 2️⃣ Pobierz wszystkie godziny pracy dla tych doktorów w jednym zapytaniu
+//     $doctorIds = $slots->pluck('doctor_id')->unique()->toArray();
+//     $workingHours = DoctorWorkingHour::whereIn('doctor_id', $doctorIds)->get();
+
+//     // 3️⃣ Zmapuj godziny pracy do tablicy [doctor_id][day_of_week]
+//     $workingMap = [];
+//     foreach ($workingHours as $wh) {
+//         $workingMap[$wh->doctor_id][$wh->day_of_week] = $wh;
+//     }
+
+//     // 4️⃣ Filtruj sloty wg godzin pracy i current_time
+//     $slots = $slots->filter(function ($slot) use ($workingMap, $today, $currentTime) {
+//         $slotDate = Carbon::parse($slot->date);
+//         $dayOfWeek = $slotDate->dayOfWeek; // 0 = niedziela, 1 = poniedziałek, ...
+
+//         if (!isset($workingMap[$slot->doctor_id][$dayOfWeek])) {
+//             return false; // brak godzin pracy → nie pokazuj slotu
+//         }
+
+//         $wh = $workingMap[$slot->doctor_id][$dayOfWeek];
+
+//         // filtr godzin pracy
+//         if ($slot->start_time < $wh->start_time || $slot->end_time > $wh->end_time) {
+//             return false;
+//         }
+
+//         // jeśli slot jest dzisiaj → uwzględnij current_time
+//         if ($slot->date === $today && $slot->start_time <= $currentTime) {
+//             return false;
+//         }
+
+//         return true;
+//     });
+
+//     // 5️⃣ Mapowanie slotów na format JSON
+//     $slots = $slots->map(function ($slot) {
+//         return [
+//             'doctor_id' => (int) $slot->doctor_id,
+//             'date' => $slot->date,
+//             'start_time' => $slot->start_time,
+//             'end_time' => $slot->end_time,
+//             'type' => $slot->type,
+//             'visit_id' => $slot->visit_id ? (int) $slot->visit_id : null,
+//         ];
+//     })
+//     ->unique(fn($slot) => "{$slot['doctor_id']}_{$slot['date']}_{$slot['start_time']}_{$slot['end_time']}")
+//     ->values()
+//     ->groupBy(fn($slot) => $slot['doctor_id'] . '|' . $slot['date'])
+//     ->map(fn($slotsForDay) => [
+//         'doctor_id' => $slotsForDay->first()['doctor_id'],
+//         'date' => $slotsForDay->first()['date'],
+//         'all_day_free' => $slotsForDay->every(fn($s) => $s['type'] === 'available'),
+//         'slots' => $slotsForDay->sortBy('start_time')->values(),
+//     ])
+//     ->values();
 
 
-    return response()->json([$slots]);
-}
+//     return response()->json([$slots]);
+// }
 
     // public function getSlotsRangeOld(Request $request)
     // {
@@ -403,6 +513,7 @@ class DoctorSlotController extends Controller
     //     return response()->json($groupedByDateDoctor);
     // }
 
+//!poprawna
     public function getSlotsRange1(Request $request)
     {
         $validated = $request->validate([
@@ -499,6 +610,144 @@ class DoctorSlotController extends Controller
 
         return response()->json($slots);
     }
+
+
+    public function getSlotsRange1New(Request $request)
+{
+    $validated = $request->validate([
+        // 'doctor_id' => 'nullable|integer|exists:doctors,id',
+        'from' => 'required|date',
+        'to' => 'required|date|after_or_equal:from',
+        'type' => 'nullable|in:available,reserved,vacation,all',
+        'current_time' => 'nullable|date_format:H:i',
+    ]);
+
+   $from = Carbon::parse($validated['from'])->toDateString();
+$to = Carbon::parse($validated['to'])->toDateString();
+$type = $validated['type'] ?? 'all';
+
+$today = Carbon::today()->toDateString();
+$currentTime = $validated['current_time'] ?? Carbon::now()->format('H:i');
+
+// Pobierz dni pracy lekarzy
+$workingDays = DoctorWorkingDay::query()
+    ->whereBetween('date', [$from, $to])
+    ->get();
+
+if ($workingDays->isEmpty()) {
+    return response()->json([]);
+}
+
+// Lista lekarzy mających grafik
+$doctorIds = $workingDays
+    ->pluck('doctor_id')
+    ->unique()
+    ->toArray();
+
+// Mapa [doctor_id][date]
+$workingMap = [];
+
+foreach ($workingDays as $day) {
+    $workingMap[$day->doctor_id][$day->date] = $day;
+}
+
+// Pobierz sloty tylko tych lekarzy
+$slots = DoctorSlot::query()
+    ->select([
+        'doctor_id',
+        'date',
+        'start_time',
+        'end_time',
+        'type',
+        'visit_id',
+    ])
+    ->whereBetween('date', [$from, $to])
+    ->whereIn('doctor_id', $doctorIds)
+    ->when(
+        $type !== 'all',
+        fn ($q) => $q->where('type', $type)
+    )
+    ->orderBy('date')
+    ->orderBy('start_time')
+    ->get();
+
+if ($slots->isEmpty()) {
+    return response()->json([]);
+}
+
+$slots = $slots->filter(function ($slot) use (
+    $workingMap,
+    $today,
+    $currentTime
+) {
+    $date = Carbon::parse($slot->date)->toDateString();
+
+    if (!isset($workingMap[$slot->doctor_id][$date])) {
+        return false;
+    }
+
+    $workingDay = $workingMap[$slot->doctor_id][$date];
+
+    $slotStart = Carbon::parse($slot->start_time);
+    $slotEnd = Carbon::parse($slot->end_time);
+
+    $workStart = Carbon::parse($workingDay->start_time);
+    $workEnd = Carbon::parse($workingDay->end_time);
+
+    // Slot poza godzinami pracy
+    if (
+        $slotStart->lt($workStart) ||
+        $slotEnd->gt($workEnd)
+    ) {
+        return false;
+    }
+
+    // Usuń przeszłe sloty dla bieżącego dnia
+    if (
+        $date === $today &&
+        $slotStart->lte(Carbon::parse($currentTime))
+    ) {
+        return false;
+    }
+
+    return true;
+});
+
+return response()->json(
+    $slots
+        ->map(function ($slot) {
+            return [
+                'doctor_id' => (int) $slot->doctor_id,
+                'date' => $slot->date,
+                'start_time' => $slot->start_time,
+                'end_time' => $slot->end_time,
+                'type' => $slot->type,
+                'visit_id' => $slot->visit_id
+                    ? (int) $slot->visit_id
+                    : null,
+            ];
+        })
+        ->unique(fn ($slot) =>
+            "{$slot['doctor_id']}_{$slot['date']}_{$slot['start_time']}_{$slot['end_time']}"
+        )
+        ->values()
+        ->groupBy(fn ($slot) =>
+            $slot['doctor_id'] . '|' . $slot['date']
+        )
+        ->map(fn ($slotsForDay) => [
+            'doctor_id' => $slotsForDay->first()['doctor_id'],
+            'date' => $slotsForDay->first()['date'],
+            'all_day_free' => $slotsForDay->every(
+                fn ($slot) => $slot['type'] === 'available'
+            ),
+            'slots' => $slotsForDay
+                ->sortBy('start_time')
+                ->values(),
+        ])
+        ->values()
+);
+}
+
 
     public function rollTodaySlots()
     {

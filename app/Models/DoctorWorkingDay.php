@@ -15,4 +15,9 @@ class DoctorWorkingDay extends Model
         'start_time',
         'end_time',
     ];
+
+     public function doctor()
+    {
+        return $this->belongsTo(Doctor::class);
+    }
 }

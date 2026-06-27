@@ -432,69 +432,149 @@ use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use App\Models\DoctorWorkingDay;
 
 class DoctorSlotService
 {
     /**
      * Generuje sloty dla lekarza w danym zakresie dat
      */
-    public function generateSlots(int $doctorId, Carbon $from, Carbon $to, int $slotLengthMinutes = 45): void
-    {
-        $workingHours = DoctorWorkingHour::where('doctor_id', $doctorId)->get();
+    // public function generateSlots(int $doctorId, Carbon $from, Carbon $to, int $slotLengthMinutes = 45): void
+    // {
+    //     $workingHours = DoctorWorkingHour::where('doctor_id', $doctorId)->get();
 
-        if ($workingHours->isEmpty()) {
-            Log::warning("Doctor $doctorId has no working hours configured.");
-            return;
+    //     if ($workingHours->isEmpty()) {
+    //         Log::warning("Doctor $doctorId has no working hours configured.");
+    //         return;
+    //     }
+
+    //     $period = CarbonPeriod::create($from, $to);
+
+    //     foreach ($period as $date) {
+    //         $dayOfWeek = $date->dayOfWeekIso;
+    //         $workingHour = $workingHours->firstWhere('day_of_week', $dayOfWeek);
+
+    //         if (!$workingHour) {
+    //             Log::info("Doctor $doctorId does not work on {$date->toDateString()}");
+    //             continue;
+    //         }
+
+    //         $workStart = Carbon::parse("{$date->toDateString()} {$workingHour->start_time}");
+    //         $workEnd = Carbon::parse("{$date->toDateString()} {$workingHour->end_time}");
+
+    //         $slots = [];
+    //         $current = $workStart->copy();
+
+    //         while ($current->lt($workEnd)) {
+    //             $slotEnd = $current->copy()->addMinutes($slotLengthMinutes);
+    //             if ($slotEnd->gt($workEnd)) break;
+
+    //             $slots[] = [
+    //                 'doctor_id' => $doctorId,
+    //                 'date' => $date->toDateString(),
+    //                 'start_time' => $current->format('H:i:s'),
+    //                 'end_time' => $slotEnd->format('H:i:s'),
+    //                 'type' => 'available',
+    //                 'visit_id' => null,
+    //                 'created_at' => now(),
+    //                 'updated_at' => now(),
+    //             ];
+
+    //             $current->addMinutes($slotLengthMinutes);
+    //         }
+
+    //         if (!empty($slots)) {
+    //             DoctorSlot::upsert(
+    //                 $slots,
+    //                 ['doctor_id', 'date', 'start_time'], // unikalność
+    //                 ['end_time', 'type', 'updated_at']   // co aktualizować jeśli konflikt
+    //             );
+
+    //             Log::info("Inserted/updated " . count($slots) . " slots for doctor $doctorId on " . $date->toDateString());
+    //         } else {
+    //             Log::info("No slots generated for doctor $doctorId on " . $date->toDateString());
+    //         }
+    //     }
+    // }
+
+
+    public function generateSlots(
+int $doctorId,
+Carbon $from,
+Carbon $to,
+int $slotLengthMinutes = 45
+): void
+{
+$workingDays = DoctorWorkingDay::query()
+->where('doctor_id', $doctorId)
+->whereBetween('date', [
+$from->toDateString(),
+$to->toDateString()
+])
+->orderBy('date')
+->get();
+
+    if ($workingDays->isEmpty()) {
+    Log::warning("Doctor {$doctorId} has no working days configured.");
+    return;
+}
+
+foreach ($workingDays as $workingDay) {
+
+    $date = Carbon::parse($workingDay->date);
+
+    $workStart = Carbon::parse(
+        $date->toDateString() . ' ' . $workingDay->start_time
+    );
+
+    $workEnd = Carbon::parse(
+        $date->toDateString() . ' ' . $workingDay->end_time
+    );
+
+    $slots = [];
+
+    $current = $workStart->copy();
+
+    while ($current->lt($workEnd)) {
+
+        $slotEnd = $current
+            ->copy()
+            ->addMinutes($slotLengthMinutes);
+
+        if ($slotEnd->gt($workEnd)) {
+            break;
         }
 
-        $period = CarbonPeriod::create($from, $to);
+        $slots[] = [
+            'doctor_id' => $doctorId,
+            'date' => $date->toDateString(),
+            'start_time' => $current->format('H:i:s'),
+            'end_time' => $slotEnd->format('H:i:s'),
+            'type' => 'available',
+            'visit_id' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
 
-        foreach ($period as $date) {
-            $dayOfWeek = $date->dayOfWeekIso;
-            $workingHour = $workingHours->firstWhere('day_of_week', $dayOfWeek);
-
-            if (!$workingHour) {
-                Log::info("Doctor $doctorId does not work on {$date->toDateString()}");
-                continue;
-            }
-
-            $workStart = Carbon::parse("{$date->toDateString()} {$workingHour->start_time}");
-            $workEnd = Carbon::parse("{$date->toDateString()} {$workingHour->end_time}");
-
-            $slots = [];
-            $current = $workStart->copy();
-
-            while ($current->lt($workEnd)) {
-                $slotEnd = $current->copy()->addMinutes($slotLengthMinutes);
-                if ($slotEnd->gt($workEnd)) break;
-
-                $slots[] = [
-                    'doctor_id' => $doctorId,
-                    'date' => $date->toDateString(),
-                    'start_time' => $current->format('H:i:s'),
-                    'end_time' => $slotEnd->format('H:i:s'),
-                    'type' => 'available',
-                    'visit_id' => null,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-
-                $current->addMinutes($slotLengthMinutes);
-            }
-
-            if (!empty($slots)) {
-                DoctorSlot::upsert(
-                    $slots,
-                    ['doctor_id', 'date', 'start_time'], // unikalność
-                    ['end_time', 'type', 'updated_at']   // co aktualizować jeśli konflikt
-                );
-
-                Log::info("Inserted/updated " . count($slots) . " slots for doctor $doctorId on " . $date->toDateString());
-            } else {
-                Log::info("No slots generated for doctor $doctorId on " . $date->toDateString());
-            }
-        }
+        $current->addMinutes($slotLengthMinutes);
     }
+
+    if (!empty($slots)) {
+
+        DoctorSlot::upsert(
+            $slots,
+            ['doctor_id', 'date', 'start_time'],
+            ['end_time', 'type', 'updated_at']
+        );
+
+        Log::info(
+            "Inserted/updated "
+            . count($slots)
+            . " slots for doctor {$doctorId} on "
+            . $date->toDateString()
+        );
+    }
+}}
 
     /**
      * Zajmuje sloty dla wizyty

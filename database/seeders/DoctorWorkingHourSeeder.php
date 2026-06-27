@@ -2,19 +2,18 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\DoctorWorkingHour;
 
 class DoctorWorkingHourSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        $doctors = [1, 2, 3, 4, 5];
-        $days = [1, 2, 3, 4, 5];
+        // Usuń wszystkie istniejące godziny pracy
+        DoctorWorkingHour::truncate();
+
+        $doctors = [1, 2, 4, 5];
+        $days = [1, 2, 3, 4, 5]; // poniedziałek-piątek
 
         foreach ($doctors as $doctorId) {
             foreach ($days as $day) {
@@ -22,7 +21,7 @@ class DoctorWorkingHourSeeder extends Seeder
                     'doctor_id'   => $doctorId,
                     'day_of_week' => $day,
                     'start_time'  => '07:30:00',
-                    'end_time'    => '21:00:00',
+                    'end_time'    => '18:45:00',
                 ]);
             }
         }

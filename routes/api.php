@@ -15,7 +15,7 @@ Route::post('/slots/free', [DoctorSlotController::class, 'free']);
 Route::post('/slots/reserve-multi', [DoctorSlotController::class, 'reserveMulti']);
 // Route::get('/slots', [DoctorSlotController::class, 'getSlots']);
 Route::get('/slots/range', [DoctorSlotController::class, 'getSlotsRange']);
-Route::get('/slots/rangeDate', [DoctorSlotController::class, 'getSlotsRange1']);
+Route::get('/slots/rangeDate', [DoctorSlotController::class, 'getSlotsRange1New']);
 
 
 // Route::prefix('availability')->group(function () {
@@ -52,7 +52,7 @@ Route::middleware('auth:sanctum')->group(
         });
 
         Route::prefix('vacations')->group(function () {
-            Route::get('/', [VacationController::class, 'index']);
+            Route::get('/', [VacationController::class, 'indexNew']);
             Route::post('/{vacation}/notes', [VacationController::class, 'updateNotes']);
             Route::get('/test', [VacationController::class, 'indexTest']);
             Route::delete('/{id}', [VacationController::class, 'destroy']); // usunięcie urlopu

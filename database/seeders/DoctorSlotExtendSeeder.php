@@ -13,8 +13,8 @@ class DoctorSlotExtendSeeder extends Seeder
         // ---------------------------------
         // USTAW SWÓJ ZAKRES DAT
         // ---------------------------------
-        $from = Carbon::parse('2026-02-16');
-        $to   = Carbon::parse('2026-02-17');
+        $from = Carbon::parse('2026-05-16');
+        $to   = Carbon::parse('2026-07-17');
 
         // Pobieramy wszystkich lekarzy
         $doctorIds = DoctorSlot::distinct()->pluck('doctor_id');
