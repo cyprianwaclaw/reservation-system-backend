@@ -11,7 +11,7 @@ use App\Http\Controllers\SmsController;
 use App\Http\Controllers\MonthlyVisitsSummaryController;
 use App\Http\Controllers\DoctorSlotController;
 
-Route::get('/', function () {
+Route::get('/', function () {   
     return view('welcome');
 });
 Route::get('/run-reminders', function () {

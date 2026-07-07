@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\Doctor;
+use App\Models\DoctorSlot;
 use App\Models\Schedule;
 use App\Models\User;
 use App\Models\Vacation;
@@ -1306,6 +1307,14 @@ public function reserve(NewVisitRequest $request)
         'end_time'   => $reservationEnd->format('H:i'),
     ]);
 
+DoctorSlot::where('doctor_id', $request->doctor_id)
+    ->where('date', $reservationStart->toDateString())
+    ->where('start_time', $reservationStart->format('H:i:s'))
+    ->where('end_time', $reservationEnd->format('H:i:s'))
+    ->update([
+        'type' => 'reserved',
+        'visit_id' => $visit->id,
+    ]);
 
     // =============================================================
     // 🔹 MAIL – tylko jeśli user ma email
