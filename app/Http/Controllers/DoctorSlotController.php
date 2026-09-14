@@ -728,7 +728,7 @@ return response()->json(
             ];
         })
         ->unique(fn ($slot) =>
-            "{$slot['doctor_id']}_{$slot['date']}_{$slot['start_time']}_{$slot['end_time']}"
+            "{$slot['doctor_id']}_{$slot['date']}_{$slot['start_time']}_{$slot['end_time']}_{$slot['type']}"
         )
         ->values()
         ->groupBy(fn ($slot) =>
