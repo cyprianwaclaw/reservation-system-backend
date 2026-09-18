@@ -40,7 +40,7 @@ Route::put('/visits-update/{visitId}', [ScheduleController::class, 'updateVisit'
 Route::post('/doctor/login', [ScheduleController::class, 'loginDoctor']);
 Route::get('/users/{user}',  [ScheduleController::class, 'showUser']);
 Route::get('/visits/{visit}',  [ScheduleController::class, 'showVisit']);
-Route::delete('/schedule/visits/{id}', [ScheduleController::class, 'cancel']); // usuwanie wizyty
+Route::delete('/schedule-patient/visits/{id}', [ScheduleController::class, 'cancel']); // usuwanie wizyty
 
 
 Route::middleware('auth:sanctum')->group(
